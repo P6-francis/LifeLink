@@ -4,5 +4,5 @@ import 'app/LifeLink_app.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const Myapp());
+  runApp(const LifeLinkApp());
 }
