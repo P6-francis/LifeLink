@@ -27,7 +27,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
     appBar: AppBar(backgroundColor: const Color(0xffcf2929), foregroundColor: Colors.white, elevation: 0, title: const Text('Messages', style: TextStyle(fontWeight: FontWeight.w700))),
     body: ListView.separated(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 24), itemCount: _chats.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) => _MessageCard(
         chat: _chats[index],
         onOpen: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatScreen(name: _chats[index].name))),
