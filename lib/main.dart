@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-import 'app/lifelink_app.dart';
+import 'app/my_app.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
