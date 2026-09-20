@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../app/app_shell.dart';
@@ -14,6 +16,8 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _signUp = false;
   bool _verify = false;
   bool _obscurePassword = true;
+  bool _isLoading = false;
+
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _name = TextEditingController();
@@ -26,18 +30,70 @@ class _AuthScreenState extends State<AuthScreen> {
     super.dispose();
   }
 
-  void _continue() {
-    if (_email.text.trim().isEmpty || _password.text.isEmpty) {
+  Future<void> _continue() async {
+    final email = _email.text.trim();
+    final password = _password.text;
+
+    if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter your email and password.')),
       );
       return;
     }
-    if (_signUp && !_verify) {
-      setState(() => _verify = true);
+
+    if (_signUp && _name.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter your full name.')),
+      );
       return;
     }
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const AppShell()));
+
+    setState(() => _isLoading = true);
+
+    try {
+      if (_signUp) {
+        // 1. Create User in Firebase Auth
+        final userCredential = await FirebaseAuth.instance
+            .createUserWithEmailAndPassword(email: email, password: password);
+
+        final user = userCredential.user;
+        if (user != null) {
+          // Update Firebase Display Name
+          await user.updateDisplayName(_name.text.trim());
+
+          // 2. Save User Record in Firestore
+          await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+            'uid': user.uid,
+            'fullName': _name.text.trim(),
+            'email': email,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
+      } else {
+        // Log In Existing User
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const AppShell()),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Authentication failed.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   InputDecoration _field({required String hint, Widget? suffix}) => InputDecoration(
@@ -48,8 +104,14 @@ class _AuthScreenState extends State<AuthScreen> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         filled: true,
         fillColor: Colors.white,
-        enabledBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)), borderSide: BorderSide(color: Color(0xffdedfe4))),
-        focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)), borderSide: BorderSide(color: _red, width: 1.4)),
+        enabledBorder: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+          borderSide: BorderSide(color: Color(0xffdedfe4)),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+          borderSide: BorderSide(color: _red, width: 1.4),
+        ),
       );
 
   @override
@@ -124,9 +186,19 @@ class _AuthScreenState extends State<AuthScreen> {
                         width: double.infinity,
                         height: 53,
                         child: FilledButton(
-                          onPressed: _continue,
-                          style: FilledButton.styleFrom(backgroundColor: _red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                          child: Text(_signUp ? 'Sign up' : 'Log in', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                          onPressed: _isLoading ? null : _continue,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _red,
+                            disabledBackgroundColor: const Color(0xffe49397),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                )
+                              : Text(_signUp ? 'Sign up' : 'Log in', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                         ),
                       ),
                       const SizedBox(height: 9),
@@ -174,6 +246,552 @@ class _AuthScreenState extends State<AuthScreen> {
       ),
     );
   }
+}
+
+class _CreateAccountPage extends StatefulWidget {
+  const _CreateAccountPage();
+
+  @override
+  State<_CreateAccountPage> createState() => _CreateAccountPageState();
+}
+
+class _CreateAccountPageState extends State<_CreateAccountPage> {
+  static const _red = Color(0xffcf2929);
+
+  // Text Controllers
+  final _firstName = TextEditingController();
+  final _middleName = TextEditingController();
+  final _lastName = TextEditingController();
+  final _email = TextEditingController();
+  final _phone = TextEditingController();
+  final _address = TextEditingController();
+  final _password = TextEditingController();
+  final _confirmPassword = TextEditingController();
+
+  // Dropdowns & Selectors
+  String? _bloodType;
+  String? _gender;
+  String? _maritalStatus;
+  DateTime? _birthdate;
+
+  bool _bloodMenuOpen = false;
+  bool _agreed = false;
+  bool _obscurePassword = true;
+  bool _isLoading = false;
+
+  int? get _calculatedAge {
+    if (_birthdate == null) return null;
+    final now = DateTime.now();
+    int age = now.year - _birthdate!.year;
+    if (now.month < _birthdate!.month ||
+        (now.month == _birthdate!.month && now.day < _birthdate!.day)) {
+      age--;
+    }
+    return age;
+  }
+
+  bool get _canCreate =>
+      _agreed &&
+      _firstName.text.trim().isNotEmpty &&
+      _lastName.text.trim().isNotEmpty &&
+      _email.text.trim().isNotEmpty &&
+      _phone.text.trim().isNotEmpty &&
+      _address.text.trim().isNotEmpty &&
+      _bloodType != null &&
+      _gender != null &&
+      _maritalStatus != null &&
+      _birthdate != null &&
+      _password.text.isNotEmpty &&
+      _password.text == _confirmPassword.text;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final controller in [
+      _firstName,
+      _middleName,
+      _lastName,
+      _email,
+      _phone,
+      _address,
+      _password,
+      _confirmPassword,
+    ]) {
+      controller.addListener(_refresh);
+    }
+  }
+
+  void _refresh() => setState(() {});
+
+  @override
+  void dispose() {
+    for (final controller in [
+      _firstName,
+      _middleName,
+      _lastName,
+      _email,
+      _phone,
+      _address,
+      _password,
+      _confirmPassword,
+    ]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _handleCreateAccount() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final email = _email.text.trim();
+      final password = _password.text;
+
+      final mName = _middleName.text.trim();
+      final fullName = mName.isEmpty
+          ? '${_firstName.text.trim()} ${_lastName.text.trim()}'
+          : '${_firstName.text.trim()} $mName ${_lastName.text.trim()}';
+
+      // 1. Create User in Firebase Authentication
+      final userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(email: email, password: password);
+
+      final user = userCredential.user;
+
+      if (user != null) {
+        await user.updateDisplayName(fullName);
+
+        // 2. Save Detailed Profile Record in Firestore
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'uid': user.uid,
+          'firstName': _firstName.text.trim(),
+          'middleName': _middleName.text.trim(),
+          'lastName': _lastName.text.trim(),
+          'fullName': fullName,
+          'email': email,
+          'phone': _phone.text.trim(),
+          'address': _address.text.trim(),
+          'gender': _gender,
+          'maritalStatus': _maritalStatus,
+          'bloodType': _bloodType,
+          'birthdate': Timestamp.fromDate(_birthdate!),
+          'age': _calculatedAge,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      if (!mounted) return;
+
+      // Navigate directly into main app shell
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const AppShell()),
+        (route) => false,
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Failed to create account.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  InputDecoration _field(String hint, {Widget? suffix}) => InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: Color(0xff777984), fontSize: 14),
+        suffixIcon: suffix,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        filled: true,
+        fillColor: Colors.white,
+        enabledBorder: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+          borderSide: BorderSide(color: Color(0xffdedfe4)),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+          borderSide: BorderSide(color: _red, width: 1.4),
+        ),
+      );
+
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 7),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Color(0xff13223c),
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          child: Column(
+            children: [
+              SizedBox(
+                height: 92,
+                child: Row(
+                  children: [
+                    const SizedBox(width: 30),
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: const BoxDecoration(
+                        color: Color(0xffffe7eb),
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.arrow_back, size: 20, color: _red),
+                        tooltip: 'Back',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Create Account',
+                      style: TextStyle(
+                        color: Color(0xff13223c),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: Color(0xffeeeeee)),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(38, 22, 38, 30),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _label('First Name'),
+                      TextField(controller: _firstName, decoration: _field('First Name')),
+                      const SizedBox(height: 17),
+
+                      _label('Middle Name'),
+                      TextField(controller: _middleName, decoration: _field('Middle Name (Optional)')),
+                      const SizedBox(height: 17),
+
+                      _label('Last Name'),
+                      TextField(controller: _lastName, decoration: _field('Last Name')),
+                      const SizedBox(height: 17),
+
+                      _label('Email Address'),
+                      TextField(
+                        controller: _email,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: _field('example@gmail.com'),
+                      ),
+                      const SizedBox(height: 17),
+
+                      _label('Phone Number'),
+                      TextField(
+                        controller: _phone,
+                        keyboardType: TextInputType.phone,
+                        decoration: _field('09xx xxx xxxx'),
+                      ),
+                      const SizedBox(height: 17),
+
+                      _label('Address'),
+                      TextField(
+                        controller: _address,
+                        decoration: _field('Street, Barangay, City/Municipality'),
+                      ),
+                      const SizedBox(height: 17),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _label('Gender'),
+                                DropdownButtonFormField<String>(
+                                  value: _gender,
+                                  decoration: _field('Gender'),
+                                  items: ['Male', 'Female', 'Other']
+                                      .map((g) => DropdownMenuItem(value: g, child: Text(g)))
+                                      .toList(),
+                                  onChanged: (val) => setState(() => _gender = val),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _label('Marital Status'),
+                                DropdownButtonFormField<String>(
+                                  value: _maritalStatus,
+                                  decoration: _field('Status'),
+                                  items: ['Single', 'Married', 'Widowed', 'Separated']
+                                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                                      .toList(),
+                                  onChanged: (val) => setState(() => _maritalStatus = val),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 17),
+
+                      _label('Birthdate'),
+                      InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: DateTime(2000),
+                            firstDate: DateTime(1920),
+                            lastDate: DateTime.now(),
+                          );
+                          if (picked != null) {
+                            setState(() => _birthdate = picked);
+                          }
+                        },
+                        child: Container(
+                          height: 48,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: const Color(0xffdedfe4)),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _birthdate == null
+                                      ? 'Select Birthdate'
+                                      : '${_birthdate!.month}/${_birthdate!.day}/${_birthdate!.year}  (Age: ${_calculatedAge ?? 0})',
+                                  style: TextStyle(
+                                    color: _birthdate == null
+                                        ? const Color(0xff777984)
+                                        : const Color(0xff13223c),
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                              const Icon(
+                                Icons.calendar_today_rounded,
+                                size: 18,
+                                color: Color(0xff777984),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 17),
+
+                      _label('Blood Type'),
+                      Material(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          onTap: () => setState(() => _bloodMenuOpen = !_bloodMenuOpen),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            height: 48,
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: const Color(0xffdedfe4)),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _bloodType ?? 'Select blood type',
+                                    style: TextStyle(
+                                      color: _bloodType == null
+                                          ? const Color(0xff777984)
+                                          : const Color(0xff13223c),
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: Colors.black,
+                                  size: 22,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (_bloodMenuOpen)
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: const Color(0xffdedfe4)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Container(
+                                color: const Color(0xff777777),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+                                child: const Text(
+                                  'Select blood type',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              ...['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(
+                                (type) => InkWell(
+                                  onTap: () => setState(() {
+                                    _bloodType = type;
+                                    _bloodMenuOpen = false;
+                                  }),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 6,
+                                    ),
+                                    child: Text(
+                                      type,
+                                      style: const TextStyle(
+                                        color: Colors.black,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      const SizedBox(height: 17),
+
+                      _label('Password'),
+                      TextField(
+                        controller: _password,
+                        obscureText: _obscurePassword,
+                        decoration: _field(
+                          'Create a password',
+                          suffix: IconButton(
+                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                            icon: Icon(
+                              _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                              color: _red,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 17),
+
+                      _label('Confirm Password'),
+                      TextField(
+                        controller: _confirmPassword,
+                        obscureText: true,
+                        decoration: _field('Re-enter password'),
+                      ),
+                      const SizedBox(height: 10),
+
+                      Row(
+                        children: [
+                          Checkbox(
+                            value: _agreed,
+                            onChanged: (value) => setState(() => _agreed = value ?? false),
+                            activeColor: _red,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                          ),
+                          Expanded(
+                            child: RichText(
+                              text: const TextSpan(
+                                style: TextStyle(color: Color(0xff53617a), fontSize: 12.5),
+                                children: [
+                                  TextSpan(text: 'I agree to the '),
+                                  TextSpan(
+                                    text: 'Terms of Service',
+                                    style: TextStyle(color: _red, fontWeight: FontWeight.w700),
+                                  ),
+                                  TextSpan(text: ' and '),
+                                  TextSpan(
+                                    text: 'Privacy Policy',
+                                    style: TextStyle(color: _red, fontWeight: FontWeight.w700),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 9),
+
+                      SizedBox(
+                        height: 49,
+                        child: FilledButton(
+                          onPressed: (_canCreate && !_isLoading) ? _handleCreateAccount : null,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _red,
+                            disabledBackgroundColor: const Color(0xffe49397),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2.5,
+                                  ),
+                                )
+                              : const Text(
+                                  'Create Account',
+                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: RichText(
+                          text: const TextSpan(
+                            style: TextStyle(color: Color(0xff53617a), fontSize: 14),
+                            children: [
+                              TextSpan(text: 'Already have an account? '),
+                              TextSpan(
+                                text: 'Log In',
+                                style: TextStyle(color: _red, fontWeight: FontWeight.w700),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
 }
 
 class _ContactSupportPage extends StatefulWidget {
@@ -451,197 +1069,6 @@ class _ReportLoginIssuePageState extends State<_ReportLoginIssuePage> {
       );
 }
 
-class _CreateAccountPage extends StatefulWidget {
-  const _CreateAccountPage();
-
-  @override
-  State<_CreateAccountPage> createState() => _CreateAccountPageState();
-}
-
-class _CreateAccountPageState extends State<_CreateAccountPage> {
-  static const _red = Color(0xffcf2929);
-  final _firstName = TextEditingController();
-  final _lastName = TextEditingController();
-  final _email = TextEditingController();
-  final _phone = TextEditingController();
-  final _password = TextEditingController();
-  final _confirmPassword = TextEditingController();
-  String? _bloodType;
-  bool _bloodMenuOpen = false;
-  bool _agreed = false;
-  bool _obscurePassword = true;
-
-  bool get _canCreate =>
-      _agreed &&
-      _firstName.text.trim().isNotEmpty &&
-      _lastName.text.trim().isNotEmpty &&
-      _email.text.trim().isNotEmpty &&
-      _phone.text.trim().isNotEmpty &&
-      _bloodType != null &&
-      _password.text.isNotEmpty &&
-      _password.text == _confirmPassword.text;
-
-  @override
-  void initState() {
-    super.initState();
-    for (final controller in [_firstName, _lastName, _email, _phone, _password, _confirmPassword]) {
-      controller.addListener(_refresh);
-    }
-  }
-
-  void _refresh() => setState(() {});
-
-  @override
-  void dispose() {
-    for (final controller in [_firstName, _lastName, _email, _phone, _password, _confirmPassword]) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  InputDecoration _field(String hint, {Widget? suffix}) => InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: Color(0xff777984), fontSize: 14),
-        suffixIcon: suffix,
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        filled: true,
-        fillColor: Colors.white,
-        enabledBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)), borderSide: BorderSide(color: Color(0xffdedfe4))),
-        focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)), borderSide: BorderSide(color: _red, width: 1.4)),
-      );
-
-  Widget _label(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 7),
-        child: Align(alignment: Alignment.centerLeft, child: Text(text, style: const TextStyle(color: Color(0xff13223c), fontSize: 14, fontWeight: FontWeight.w500))),
-      );
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.white,
-        body: SafeArea(
-          child: Column(children: [
-            SizedBox(
-              height: 92,
-              child: Row(children: [
-                const SizedBox(width: 30),
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: const BoxDecoration(color: Color(0xffffe7eb), shape: BoxShape.circle),
-                  child: IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back, size: 20, color: _red), tooltip: 'Back'),
-                ),
-                const SizedBox(width: 12),
-                const Text('Create Account', style: TextStyle(color: Color(0xff13223c), fontSize: 17, fontWeight: FontWeight.w700)),
-              ]),
-            ),
-            const Divider(height: 1, color: Color(0xffeeeeee)),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(38, 22, 38, 30),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Row(children: [
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_label('First Name'), TextField(controller: _firstName, decoration: _field('First Name'))])),
-                    const SizedBox(width: 12),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_label('Last Name'), TextField(controller: _lastName, decoration: _field('Last Name'))])),
-                  ]),
-                  const SizedBox(height: 17),
-                  _label('Email Address'),
-                  TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: _field('example@gmail.com')),
-                  const SizedBox(height: 17),
-                  _label('Phone Number'),
-                  TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: _field('09xx xxx xxxx')),
-                  const SizedBox(height: 17),
-                  _label('Blood Type'),
-                  Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      onTap: () => setState(() => _bloodMenuOpen = !_bloodMenuOpen),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        height: 48,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        decoration: BoxDecoration(border: Border.all(color: const Color(0xffdedfe4)), borderRadius: BorderRadius.circular(12)),
-                        child: Row(children: [
-                          Expanded(child: Text(_bloodType ?? 'Select blood type', style: TextStyle(color: _bloodType == null ? Colors.black : const Color(0xff13223c), fontSize: 14))),
-                          const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.black, size: 22),
-                        ]),
-                      ),
-                    ),
-                  ),
-                  if (_bloodMenuOpen)
-                    Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(border: Border.all(color: const Color(0xffdedfe4))),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Container(
-                            color: const Color(0xff777777),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-                            child: const Text('Select blood type', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
-                          ),
-                          ...['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(
-                            (type) => InkWell(
-                              onTap: () => setState(() {
-                                _bloodType = type;
-                                _bloodMenuOpen = false;
-                              }),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                                child: Text(type, style: const TextStyle(color: Colors.black, fontSize: 14)),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: 17),
-                  _label('Password'),
-                  TextField(
-                    controller: _password,
-                    obscureText: _obscurePassword,
-                    decoration: _field('Create a password', suffix: IconButton(onPressed: () => setState(() => _obscurePassword = !_obscurePassword), icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off, color: _red, size: 20))),
-                  ),
-                  const SizedBox(height: 17),
-                  _label('Confirm Password'),
-                  TextField(controller: _confirmPassword, obscureText: true, decoration: _field('Re-enter password')),
-                  const SizedBox(height: 10),
-                  Row(children: [
-                    Checkbox(value: _agreed, onChanged: (value) => setState(() => _agreed = value ?? false), activeColor: _red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5))),
-                    Expanded(child: RichText(text: const TextSpan(style: TextStyle(color: Color(0xff53617a), fontSize: 12.5), children: [TextSpan(text: 'I agree to the '), TextSpan(text: 'Terms of Service', style: TextStyle(color: _red, fontWeight: FontWeight.w700)), TextSpan(text: ' and '), TextSpan(text: 'Privacy Policy', style: TextStyle(color: _red, fontWeight: FontWeight.w700))]))),
-                  ]),
-                  const SizedBox(height: 9),
-                  SizedBox(
-                    height: 49,
-                    child: FilledButton(
-                      onPressed: _canCreate ? () => Navigator.of(context).pop() : null,
-                      style: FilledButton.styleFrom(backgroundColor: _red, disabledBackgroundColor: const Color(0xffe49397), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                      child: const Text('Create Account', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: RichText(
-                      text: const TextSpan(
-                        style: TextStyle(color: Color(0xff53617a), fontSize: 14),
-                        children: [
-                          TextSpan(text: 'Already have an account? '),
-                          TextSpan(text: 'Log In', style: TextStyle(color: _red, fontWeight: FontWeight.w700)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ]),
-              ),
-            ),
-          ]),
-        ),
-      );
-}
-
 class _ForgotPasswordPage extends StatefulWidget {
   const _ForgotPasswordPage();
 
@@ -659,14 +1086,25 @@ class _ForgotPasswordPageState extends State<_ForgotPasswordPage> {
     super.dispose();
   }
 
-  void _sendCode() {
-    if (_email.text.trim().isEmpty) {
+  Future<void> _sendPasswordReset() async {
+    final email = _email.text.trim();
+    if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter your email address.')));
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Verification code sent to ${_email.text.trim()}.')),
-    );
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Password reset link sent to $email.')),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Failed to send password reset email.')),
+      );
+    }
   }
 
   @override
@@ -707,7 +1145,7 @@ class _ForgotPasswordPageState extends State<_ForgotPasswordPage> {
                   const Text('Reset Password', style: TextStyle(color: Color(0xff13223c), fontSize: 22, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 9),
                   const Text(
-                    "Enter your registered email and we'll send you a\nverification code.",
+                    "Enter your registered email and we'll send you a\npassword reset email.",
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Color(0xff53617a), fontSize: 14, height: 1.45),
                   ),
@@ -736,9 +1174,9 @@ class _ForgotPasswordPageState extends State<_ForgotPasswordPage> {
                     width: double.infinity,
                     height: 53,
                     child: FilledButton(
-                      onPressed: _sendCode,
+                      onPressed: _sendPasswordReset,
                       style: FilledButton.styleFrom(backgroundColor: _red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                      child: const Text('Send Verification Code', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                      child: const Text('Send Reset Email', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                     ),
                   ),
                 ]),
