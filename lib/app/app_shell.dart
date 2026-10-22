@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
-import '../screens/home_screen.dart';
-import '../screens/donor_map_screen.dart';
-import '../screens/profile_screen.dart';
-import '../screens/requests_screen.dart';
+import '../features/donors/presentation/donor_map_screen.dart';
+import '../features/home/presentation/home_screen.dart';
+import '../features/profile/presentation/profile_screen.dart';
+import '../features/requests/presentation/requests_screen.dart';
 import 'tab_navigation.dart';
 
 class AppShell extends StatefulWidget {
@@ -21,6 +22,12 @@ class _AppShellState extends State<AppShell> {
     _NotificationsScreen(),
     ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    appTabIndex.value = 0;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,12 +68,29 @@ class _NotificationsScreen extends StatelessWidget {
         backgroundColor: const Color(0xfff7f8fa),
         body: Column(children: [
           Container(
-            height: 53,
+            height: 56,
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 17),
+            padding: const EdgeInsets.symmetric(horizontal: 18),
             alignment: Alignment.centerLeft,
-            decoration: const BoxDecoration(color: Colors.white, border: Border(bottom: BorderSide(color: Color(0xffedf0f3)))),
-            child: const Text('Notifications', style: TextStyle(color: Color(0xff13223c), fontSize: 20, fontWeight: FontWeight.w700)),
+            color: _red,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: SvgPicture.asset('assets/lifelink_logo.svg'),
+                ),
+                const SizedBox(width: 14),
+                const Text(
+                  'Notifications',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
           ),
           Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 24), children: [
             Container(

@@ -43,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local PHP admin-dashboard sessions. These are runtime files, never source.
+/web/storage/sessions/*
+!/web/storage/sessions/.gitkeep

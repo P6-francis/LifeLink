@@ -1,9 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-import 'auth_screen.dart';
-import 'messages_screen.dart';
+import '../../auth/presentation/auth_screen.dart';
+import '../../messaging/presentation/messages_screen.dart';
 import 'profile_details_screens.dart';
+import '../../../widgets/async_state_view.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -15,29 +17,149 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   static const _red = Color(0xffcf2929);
   bool _availableToDonate = true;
+  bool _availabilityLoaded = false;
   bool _pushNotifications = true;
+  String? _lastDonorDirectorySignature;
+
+  String _cityFromProfile(Map<String, dynamic>? information) {
+    final savedCity = (information?['city'] as String?)?.trim() ?? '';
+    if (savedCity.isNotEmpty) return savedCity;
+
+    final address = (information?['address'] as String?)?.trim() ?? '';
+    final parts = address
+        .split(',')
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.length >= 2) return parts[parts.length - 2];
+    return parts.isEmpty ? '' : parts.first;
+  }
+
+  void _syncDonorDirectory({
+    required User user,
+    required Map<String, dynamic>? information,
+    required String fallbackName,
+  }) {
+    final name = (information?['fullName'] as String?)?.trim().isNotEmpty == true
+        ? (information?['fullName'] as String).trim()
+        : fallbackName;
+    final bloodType = (information?['bloodType'] as String?)?.trim() ?? '';
+    final city = _cityFromProfile(information);
+    final isAvailable = _availableToDonate && bloodType.isNotEmpty && city.isNotEmpty;
+    final signature = '${user.uid}|$name|$bloodType|$city|$isAvailable';
+    if (_lastDonorDirectorySignature == signature) return;
+    _lastDonorDirectorySignature = signature;
+
+    FirebaseFirestore.instance.collection('donors').doc(user.uid).set({
+      'name': name,
+      'bloodType': bloodType,
+      'city': city,
+      'isAvailable': isAvailable,
+    }, SetOptions(merge: true)).catchError((_) {});
+  }
+
+  Future<void> _loadAvailability() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final document = await FirebaseFirestore.instance
+        .collection('donors')
+        .doc(user.uid)
+        .get();
+    final value = document.data()?['isAvailable'];
+    if (mounted) {
+      setState(() {
+        _availableToDonate = value is bool ? value : true;
+        _availabilityLoaded = true;
+      });
+    }
+  }
+
+  Future<void> _setAvailability(bool value) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final previousValue = _availableToDonate;
+    setState(() => _availableToDonate = value);
+    try {
+      await FirebaseFirestore.instance.collection('donors').doc(user.uid).set(
+        {'isAvailable': value},
+        SetOptions(merge: true),
+      );
+    } on FirebaseException catch (error) {
+      if (!mounted) return;
+      setState(() => _availableToDonate = previousValue);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message ?? 'Unable to update availability.')),
+      );
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAvailability();
+  }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: AsyncStateView.loading(label: 'Loading profile...'));
+        }
         final user = snapshot.data ?? FirebaseAuth.instance.currentUser;
-        final name =
+        final storedName =
             (user?.displayName != null && user!.displayName!.isNotEmpty)
                 ? user.displayName!
                 : 'User';
+        final name = storedName
+            .split(RegExp(r'\s+'))
+            .where((part) => part.isNotEmpty)
+            .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+            .join(' ');
         final email = user?.email ?? 'No email provided';
         final initial = name.isNotEmpty ? name[0].toUpperCase() : 'U';
 
-        return Scaffold(
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: user == null
+              ? null
+              : FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+          builder: (context, profileSnapshot) {
+            if (profileSnapshot.hasError) {
+              return Scaffold(body: AsyncStateView.error(error: profileSnapshot.error));
+            }
+            if (user != null && !profileSnapshot.hasData) {
+              return const Scaffold(body: AsyncStateView.loading(label: 'Loading profile details...'));
+            }
+            final userInformation =
+                profileSnapshot.data?.data()?['userInformation']
+                    as Map<String, dynamic>?;
+            final bloodType = (userInformation?['bloodType'] as String?)?.trim();
+            if (user != null && _availabilityLoaded) {
+              _syncDonorDirectory(
+                user: user,
+                information: userInformation,
+                fallbackName: name,
+              );
+            }
+
+            return Scaffold(
           backgroundColor: const Color(0xfff7f8fa),
           body: Column(
             children: [
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(13, 18, 13, 19),
-                color: _red,
+                padding: const EdgeInsets.fromLTRB(16, 17, 16, 20),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xffdc3035), Color(0xffc9232a)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.vertical(
+                    bottom: Radius.circular(22),
+                  ),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -55,10 +177,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         CircleAvatar(
                           radius: 29,
-                          backgroundColor: const Color(0x33ffffff),
+                          backgroundColor: const Color(0x40ffffff),
                           child: CircleAvatar(
-                            radius: 28,
-                            backgroundColor: const Color(0x33ffffff),
+                            radius: 27,
+                            backgroundColor: const Color(0x55ffffff),
                             child: Text(
                               initial,
                               style: const TextStyle(
@@ -78,7 +200,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 name,
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 17,
+                                  fontSize: 18,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -87,20 +209,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 email,
                                 style: const TextStyle(
                                   color: Color(0xffffd8d8),
-                                  fontSize: 11,
+                                  fontSize: 12,
                                 ),
                               ),
                               const SizedBox(height: 5),
-                              const Row(
+                              Row(
                                 children: [
                                   _HeaderPill(
-                                    label: 'Blood Type: O+',
-                                    color: Color(0x33ffffff),
+                                    label: 'Blood Type: ${bloodType?.isNotEmpty == true ? bloodType : 'Not specified'}',
+                                    color: const Color(0x33ffffff),
                                   ),
-                                  SizedBox(width: 6),
+                                  const SizedBox(width: 6),
                                   _HeaderPill(
-                                    label: '● Available',
-                                    color: Color(0xff59aa5b),
+                                    label: _availableToDonate
+                                        ? 'Available'
+                                        : 'Unavailable',
+                                    color: _availableToDonate
+                                        ? const Color(0xff59aa5b)
+                                        : const Color(0xff9b3036),
                                   ),
                                 ],
                               ),
@@ -110,22 +236,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    const Row(
-                      children: [
-                        Expanded(
-                          child: _Stat(
-                            number: '12',
-                            label: 'Donations',
-                          ),
-                        ),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: _Stat(
-                            number: '93',
-                            label: 'Smart Rank',
-                          ),
-                        ),
-                      ],
+                    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: user == null
+                          ? null
+                          : FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(user.uid)
+                              .collection('requests')
+                              .snapshots(),
+                      builder: (context, requestSnapshot) {
+                        final requestCount = requestSnapshot.data?.docs
+                                .where((request) {
+                                  final status =
+                                      (request.data()['status'] as String? ??
+                                              'Active')
+                                          .toLowerCase();
+                                  return status == 'active' ||
+                                      status == 'completed';
+                                })
+                                .length ??
+                            0;
+                        return Row(
+                          children: [
+                            const Expanded(
+                              child: _Stat(
+                                number: '12',
+                                label: 'Donations',
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _Stat(
+                                number: '$requestCount',
+                                label: 'Requests',
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -140,6 +288,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                     _group([
                       _menu(
+                        icon: Icons.person_outline,
+                        title: 'Edit Information',
+                        onTap: () => _open(const EditInformationScreen()),
+                      ),
+                      _menu(
                         icon: Icons.lock,
                         title: 'Change Password',
                         onTap: () =>
@@ -152,7 +305,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             _open(const ContactNumberScreen()),
                       ),
                       _menu(
-                        icon: Icons.chat_bubble,
+                        icon: Icons.forum_outlined,
                         title: 'Messages',
                         onTap: () =>
                             _open(const MessagesScreen()),
@@ -169,11 +322,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         icon: Icons.water_drop,
                         title: 'Available to Donate',
                         value: _availableToDonate,
-                        onChanged: (value) {
-                          setState(() {
-                            _availableToDonate = value;
-                          });
-                        },
+                        onChanged: _setAvailability,
                       ),
                       _menu(
                         icon: Icons.location_on,
@@ -425,6 +574,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ],
           ),
+            );
+          },
         );
       },
     );
@@ -571,10 +722,10 @@ class _Stat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        height: 44,
+        height: 48,
         decoration: BoxDecoration(
           color: const Color(0x33ffffff),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

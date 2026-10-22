@@ -1,8 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
-import '../app/tab_navigation.dart';
-import 'active_requests_screen.dart';
-import 'messages_screen.dart';
+import '../../../app/tab_navigation.dart';
+import '../../requests/presentation/active_requests_screen.dart';
+import '../../messaging/presentation/messages_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -15,13 +18,13 @@ class HomeScreen extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20),
           decoration: const BoxDecoration(color: _red),
           child: Row(children: [
-            const CircleAvatar(radius: 22, backgroundColor: Color(0x30ffffff), child: Icon(Icons.favorite_rounded, color: Colors.white, size: 22)),
+            SvgPicture.asset(
+              'assets/lifelink_logo.svg',
+              width: 44,
+              height: 44,
+            ),
             const SizedBox(width: 12),
-            const Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Good day', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800)),
-              SizedBox(height: 3),
-              Text('Every donation can save a life.', style: TextStyle(color: Color(0xffffe7e9), fontSize: 12.5)),
-            ])),
+            Expanded(child: _Greeting()),
             Container(width: 40, height: 40, decoration: const BoxDecoration(color: Color(0x30ffffff), shape: BoxShape.circle), child: IconButton(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MessagesScreen())), icon: const Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 20), tooltip: 'Messages')),
           ]),
         ),
@@ -56,6 +59,63 @@ class HomeScreen extends StatelessWidget {
       ]);
 
   static Widget _card({required Widget child}) => Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: const [BoxShadow(color: Color(0x10000000), blurRadius: 4, offset: Offset(0, 2))]), child: child);
+}
+
+class _Greeting extends StatelessWidget {
+  const _Greeting();
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const _GreetingText();
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final profile = snapshot.data?.data()?['userInformation']
+            as Map<String, dynamic>?;
+        final firstName = (profile?['firstName'] as String?)?.trim();
+        final displayName = user.displayName?.trim();
+        final name = firstName?.isNotEmpty == true
+            ? firstName
+            : displayName?.split(RegExp(r'\s+')).first;
+
+        return _GreetingText(name: name);
+      },
+    );
+  }
+}
+
+class _GreetingText extends StatelessWidget {
+  const _GreetingText({this.name});
+
+  final String? name;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            name?.isNotEmpty == true ? 'Good day, $name' : 'Good day',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 3),
+          const Text(
+            'Every donation can save a life.',
+            style: TextStyle(color: Color(0xffffe7e9), fontSize: 12),
+          ),
+        ],
+      );
 }
 
 class _Tag extends StatelessWidget {

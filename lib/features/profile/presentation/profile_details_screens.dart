@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 const _red = Color(0xffcf2929);
@@ -97,6 +99,116 @@ Widget _primaryButton(String text, VoidCallback onPressed) => SizedBox(
       ),
     );
 
+class EditInformationScreen extends StatefulWidget {
+  const EditInformationScreen({super.key});
+
+  @override
+  State<EditInformationScreen> createState() => _EditInformationScreenState();
+}
+
+class _EditInformationScreenState extends State<EditInformationScreen> {
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
+  final _barangay = TextEditingController();
+  final _city = TextEditingController();
+  final _province = TextEditingController();
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final snapshot = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    final data = snapshot.data()?['userInformation'] as Map<String, dynamic>? ?? {};
+    _name.text = data['fullName'] as String? ?? user.displayName ?? '';
+    _phone.text = data['phone'] as String? ?? '';
+    _barangay.text = data['barangay'] as String? ?? '';
+    _city.text = data['city'] as String? ?? '';
+    _province.text = data['province'] as String? ?? '';
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _save() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    if ([_name, _phone, _barangay, _city, _province].any((field) => field.text.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Complete all information fields.')));
+      return;
+    }
+    if (_phone.text.trim().length != 11) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Contact number must contain 11 digits.')));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final name = _name.text.trim();
+      final city = _city.text.trim();
+      final address = '${_barangay.text.trim()}, $city, ${_province.text.trim()}';
+      final userDocument = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      await user.updateDisplayName(name);
+      await userDocument.set({
+        'userInformation': {
+          'fullName': name,
+          'phone': _phone.text.trim(),
+          'barangay': _barangay.text.trim(),
+          'city': city,
+          'province': _province.text.trim(),
+          'address': address,
+        },
+      }, SetOptions(merge: true));
+      final profile = await userDocument.get();
+      final info = profile.data()?['userInformation'] as Map<String, dynamic>? ?? {};
+      await FirebaseFirestore.instance.collection('donors').doc(user.uid).set({
+        'name': name,
+        'bloodType': info['bloodType'] as String? ?? '',
+        'city': city,
+        'isAvailable': (info['bloodType'] as String? ?? '').isNotEmpty,
+      }, SetOptions(merge: true));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Information updated.')));
+      Navigator.of(context).pop();
+    } on FirebaseException catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message ?? 'Unable to update information.')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final controller in [_name, _phone, _barangay, _city, _province]) { controller.dispose(); }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => _page(
+    title: 'Edit Information',
+    child: _loading
+        ? const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator(color: _red)))
+        : _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Personal Information', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 18),
+            _label('Full Name'), _input(_name, 'Enter your full name'),
+            const SizedBox(height: 14),
+            _label('Contact Number'), _input(_phone, '09xx xxx xxxx', keyboardType: TextInputType.phone),
+            const SizedBox(height: 14),
+            _label('Barangay'), _input(_barangay, 'Enter barangay'),
+            const SizedBox(height: 14),
+            _label('City / Municipality'), _input(_city, 'Enter city or municipality'),
+            const SizedBox(height: 14),
+            _label('Province'), _input(_province, 'Enter province'),
+            const SizedBox(height: 24),
+            _primaryButton(_saving ? 'Saving...' : 'Save Changes', _saving ? () {} : _save),
+          ])),
+  );
+}
+
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
 
@@ -112,6 +224,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   bool _obscureCurrent = true;
   bool _obscureNext = true;
   bool _obscureConfirm = true;
+  bool _isSaving = false;
 
   @override
   void dispose() {
@@ -120,6 +233,64 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     _confirm.dispose();
     super.dispose();
   }
+
+  Future<void> _updatePassword() async {
+    final currentPassword = _current.text;
+    final newPassword = _next.text;
+    final confirmedPassword = _confirm.text;
+
+    if (currentPassword.isEmpty || newPassword.isEmpty || confirmedPassword.isEmpty) {
+      _showMessage('Please complete all password fields.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      _showMessage('Your new password must have at least 6 characters.');
+      return;
+    }
+    if (newPassword != confirmedPassword) {
+      _showMessage('New passwords do not match.');
+      return;
+    }
+    if (currentPassword == newPassword) {
+      _showMessage('Your new password must be different from the current password.');
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    final email = user?.email;
+    if (user == null || email == null) {
+      _showMessage('Please sign in again before changing your password.');
+      return;
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: currentPassword),
+      );
+      await user.updatePassword(newPassword);
+      if (!mounted) return;
+      _current.clear();
+      _next.clear();
+      _confirm.clear();
+      _showMessage('Password updated successfully.');
+      Navigator.of(context).pop();
+    } on FirebaseAuthException catch (error) {
+      if (!mounted) return;
+      final message = switch (error.code) {
+        'wrong-password' || 'invalid-credential' => 'Your current password is incorrect.',
+        'weak-password' => 'Choose a stronger password.',
+        'requires-recent-login' => 'Please sign in again, then try changing your password.',
+        _ => error.message ?? 'Unable to update your password.',
+      };
+      _showMessage(message);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  void _showMessage(String message) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 
   @override
   Widget build(BuildContext context) => _page(
@@ -153,10 +324,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               ),
               const SizedBox(height: 20),
               _primaryButton(
-                'Update Password',
-                () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Password updated.')),
-                ),
+                _isSaving ? 'Updating...' : 'Update Password',
+                _isSaving ? () {} : _updatePassword,
               ),
             ],
           ),
@@ -383,13 +552,17 @@ class AboutLifeLinkScreen extends StatelessWidget {
         body: Column(
           children: [
             Container(
-              height: 230,
+              // Keep the hero compact on physical devices while retaining
+              // enough room for all its fixed content.
+              height: 205,
               width: double.infinity,
               color: _red,
-              child: Column(
-                children: [
+              child: SafeArea(
+                bottom: false,
+                child: Column(
+                  children: [
                   Padding(
-                    padding: const EdgeInsets.only(top: 10, left: 5),
+                    padding: const EdgeInsets.only(left: 5),
                     child: Row(
                       children: [
                         IconButton(
@@ -410,33 +583,34 @@ class AboutLifeLinkScreen extends StatelessWidget {
                   ),
                   const Spacer(),
                   Container(
-                    width: 78,
-                    height: 78,
+                    width: 60,
+                    height: 60,
                     decoration: BoxDecoration(
                       color: const Color(0x33ffffff),
                       border: Border.all(
                           color: const Color(0x77ffffff), width: 2),
-                      borderRadius: BorderRadius.circular(23),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                     child: const Icon(Icons.water_drop,
-                        size: 39, color: Color(0xffe33135)),
+                        size: 30, color: Color(0xffe33135)),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 4),
                   const Text(
                     'LifeLink',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 26,
+                      fontSize: 22,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 1),
                   const Text(
                     'Life-Saving Network · v1.0.0',
                     style: TextStyle(color: Color(0xffffd5d5), fontSize: 13),
                   ),
-                  const SizedBox(height: 29),
-                ],
+                  const SizedBox(height: 10),
+                  ],
+                ),
               ),
             ),
             Expanded(

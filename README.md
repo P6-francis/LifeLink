@@ -1,17 +1,56 @@
-# lifelink
+# LifeLink
 
-A new Flutter project.
+Flutter application for blood donors and blood-request coordination. The app
+uses Firebase Authentication and Cloud Firestore; a small PHP-based admin
+dashboard is kept separately in `web/`.
 
-## Getting Started
+## Project structure
 
-This project is a starting point for a Flutter application.
+```text
+lib/
+├── app/                         # App bootstrap, auth routing, and navigation
+│   ├── lifelink_app.dart
+│   ├── auth_gate.dart
+│   ├── app_shell.dart
+│   └── tab_navigation.dart
+├── features/                    # Feature-owned UI and feature logic
+│   ├── auth/presentation/
+│   ├── donors/presentation/
+│   ├── home/presentation/
+│   ├── messaging/presentation/
+│   ├── profile/presentation/
+│   └── requests/presentation/
+├── widgets/                     # Reusable widgets shared by multiple features
+│   ├── app_notice.dart
+│   └── async_state_view.dart
+├── firebase_options.dart         # Generated Firebase configuration
+└── main.dart                     # Application entry point
 
-A few resources to get you started if this is your first Flutter project:
+assets/                           # Bundled images and SVG files
+test/                             # Automated tests
+web/                              # PHP admin dashboard (separate from Flutter web)
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+There is intentionally no `lib/screens/` directory. Screens belong to the
+feature that owns them, under `lib/features/<feature>/presentation/`. New UI
+should follow the same convention.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Run locally
+
+```bash
+flutter pub get
+flutter run
+```
+
+## Quality checks
+
+```bash
+flutter analyze
+flutter test
+```
+
+## Firebase
+
+Firebase is initialized in `lib/main.dart`. Platform settings live in the
+native platform directories and the generated `lib/firebase_options.dart`.
+Do not place credentials or local PHP session files in version control.
