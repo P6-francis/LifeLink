@@ -45,8 +45,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         : fallbackName;
     final bloodType = (information?['bloodType'] as String?)?.trim() ?? '';
     final city = _cityFromProfile(information);
+    final address = (information?['address'] as String?)?.trim() ?? '';
+    final phone = (information?['phone'] as String?)?.trim() ?? '';
     final isAvailable = _availableToDonate && bloodType.isNotEmpty && city.isNotEmpty;
-    final signature = '${user.uid}|$name|$bloodType|$city|$isAvailable';
+    final signature = '${user.uid}|$name|$bloodType|$city|$address|$phone|$isAvailable';
     if (_lastDonorDirectorySignature == signature) return;
     _lastDonorDirectorySignature = signature;
 
@@ -54,6 +56,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'name': name,
       'bloodType': bloodType,
       'city': city,
+      'address': address,
+      'phone': phone,
       'isAvailable': isAvailable,
     }, SetOptions(merge: true)).catchError((_) {});
   }
@@ -245,30 +249,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               .collection('requests')
                               .snapshots(),
                       builder: (context, requestSnapshot) {
-                        final requestCount = requestSnapshot.data?.docs
-                                .where((request) {
-                                  final status =
-                                      (request.data()['status'] as String? ??
-                                              'Active')
-                                          .toLowerCase();
-                                  return status == 'active' ||
-                                      status == 'completed';
-                                })
-                                .length ??
-                            0;
+                        final requests = requestSnapshot.data?.docs;
+                        final completedCount = requests?.where((request) =>
+                            (request.data()['status'] as String? ?? '') ==
+                            'Completed').length ?? 0;
+                        final activeCount = requests?.where((request) {
+                          final status = request.data()['status'] as String? ?? 'Active';
+                          return status == 'Active' || status == 'Accepted';
+                        }).length ?? 0;
                         return Row(
                           children: [
-                            const Expanded(
+                            Expanded(
                               child: _Stat(
-                                number: '12',
-                                label: 'Donations',
+                                number: '$completedCount',
+                                label: 'Completed',
                               ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: _Stat(
-                                number: '$requestCount',
-                                label: 'Requests',
+                                number: '$activeCount',
+                                label: 'Active Requests',
                               ),
                             ),
                           ],
@@ -299,12 +300,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             _open(const ChangePasswordScreen()),
                       ),
                       _menu(
-                        icon: Icons.phone,
-                        title: 'Contact Number',
-                        onTap: () =>
-                            _open(const ContactNumberScreen()),
-                      ),
-                      _menu(
                         icon: Icons.forum_outlined,
                         title: 'Messages',
                         onTap: () =>
@@ -324,14 +319,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         value: _availableToDonate,
                         onChanged: _setAvailability,
                       ),
-                      _menu(
-                        icon: Icons.location_on,
-                        title: 'Donation History',
-                        onTap: () =>
-                            _open(const DonationHistoryScreen()),
-                      ),
                     ]),
-
                     const SizedBox(height: 13),
 
                     _sectionLabel('PREFERENCES'),

@@ -1,6 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' hide Path;
+
+import '../../../services/location_geocoding_service.dart';
 
 class CreateRequestScreen extends StatefulWidget {
   const CreateRequestScreen({super.key, this.requestRef, this.initialData});
@@ -17,8 +21,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   final _hospital = TextEditingController();
   final _city = TextEditingController();
   final _contact = TextEditingController();
+  final _bloodBags = TextEditingController();
   String _group = 'A+';
   String _urgency = 'Normal';
+  LatLng? _selectedLocation;
   bool get _isEditing => widget.requestRef != null;
 
   @override
@@ -29,8 +35,13 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     _hospital.text = data['hospital'] as String? ?? '';
     _city.text = data['city'] as String? ?? '';
     _contact.text = data['contactNumber'] as String? ?? '';
+    final bags = data['bloodBagsNeeded'];
+    if (bags is num) _bloodBags.text = bags.toInt().toString();
     _group = data['bloodType'] as String? ?? _group;
     _urgency = data['urgency'] as String? ?? _urgency;
+    final latitude = data['latitude'];
+    final longitude = data['longitude'];
+    if (latitude is num && longitude is num) _selectedLocation = LatLng(latitude.toDouble(), longitude.toDouble());
   }
 
   @override
@@ -38,12 +49,18 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     _hospital.dispose();
     _city.dispose();
     _contact.dispose();
+    _bloodBags.dispose();
     super.dispose();
   }
 
   Future<void> _postRequest() async {
-    if ([_hospital, _city, _contact].any((controller) => controller.text.trim().isEmpty)) {
+    if ([_hospital, _city, _contact, _bloodBags].any((controller) => controller.text.trim().isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please complete all required fields.')));
+      return;
+    }
+    final bloodBagsNeeded = int.tryParse(_bloodBags.text.trim());
+    if (bloodBagsNeeded == null || bloodBagsNeeded < 1 || bloodBagsNeeded > 100) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid number of blood bags (1–100).')));
       return;
     }
 
@@ -71,6 +88,9 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       final requesterName = (userInformation?['fullName'] as String?)?.trim().isNotEmpty == true
           ? (userInformation?['fullName'] as String).trim()
           : (user.displayName?.trim().isNotEmpty == true ? user.displayName!.trim() : 'Requester');
+      final coordinates = _selectedLocation == null
+          ? await LocationGeocodingService.findPhilippineCity(city: _city.text)
+          : GeoCoordinates(latitude: _selectedLocation!.latitude, longitude: _selectedLocation!.longitude);
       final requestData = {
         'ownerId': user.uid,
         // A snapshot used by request cards and map pins. The profile remains the
@@ -80,7 +100,12 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
         'city': _city.text.trim(),
         'contactNumber': _contact.text.trim(),
         'bloodType': _group,
+        'bloodBagsNeeded': bloodBagsNeeded,
         'urgency': _urgency,
+        if (coordinates != null) ...{
+          'latitude': coordinates.latitude,
+          'longitude': coordinates.longitude,
+        },
         'updatedAt': FieldValue.serverTimestamp(),
       };
       if (_isEditing) {
@@ -214,6 +239,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               const SizedBox(height: 7),
               _select(value: _group, values: const ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'], onChanged: (value) => setState(() => _group = value!)),
               const SizedBox(height: 17),
+              _label('Blood Bags Needed'),
+              const SizedBox(height: 7),
+              _input(_bloodBags, 'e.g. 2', keyboardType: TextInputType.number),
+              const SizedBox(height: 17),
               _label('Urgency'),
               const SizedBox(height: 7),
               _select(value: _urgency, values: const ['Normal', 'Urgent'], onChanged: (value) => setState(() => _urgency = value!)),
@@ -230,12 +259,17 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                 decoration: BoxDecoration(border: Border.all(color: const Color(0xffdfe3e9)), borderRadius: BorderRadius.circular(12)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('No location selected yet.', style: TextStyle(color: Color(0xff8a99b0), fontSize: 13)),
+                  Text(
+                    _selectedLocation == null
+                        ? 'No location selected yet.'
+                        : 'Pin selected: ${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)}',
+                    style: const TextStyle(color: Color(0xff8a99b0), fontSize: 13),
+                  ),
                   const SizedBox(height: 6),
                   const Text('Privacy: only your city is shown publicly until a\ndonor accepts this request.', style: TextStyle(color: _red, fontSize: 12, height: 1.35)),
                   const SizedBox(height: 10),
                   SizedBox(width: double.infinity, height: 42, child: OutlinedButton.icon(
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Map location selection is not configured yet.'))),
+                    onPressed: _selectLocationOnMap,
                     style: OutlinedButton.styleFrom(foregroundColor: _red, side: const BorderSide(color: _red), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                     icon: const Icon(Icons.location_on, size: 18),
                     label: const Text('Set Location on Map', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -256,6 +290,17 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   Widget _label(String text) => Text(text, style: const TextStyle(color: Color(0xff13223c), fontSize: 15.5, fontWeight: FontWeight.w500));
 
+  Future<void> _selectLocationOnMap() async {
+    final selected = await Navigator.of(context).push<LatLng>(MaterialPageRoute(builder: (_) => _RequestLocationPicker(initialLocation: _selectedLocation)));
+    if (selected == null) return;
+    final city = await LocationGeocodingService.findCityAt(GeoCoordinates(latitude: selected.latitude, longitude: selected.longitude));
+    if (!mounted) return;
+    setState(() {
+      _selectedLocation = selected;
+      if (city != null) _city.text = city;
+    });
+  }
+
   Widget _input(TextEditingController controller, String hint, {TextInputType? keyboardType}) => SizedBox(height: 42, child: TextField(
     controller: controller,
     keyboardType: keyboardType,
@@ -269,4 +314,107 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     decoration: BoxDecoration(border: Border.all(color: const Color(0xffdfe3e9)), borderRadius: BorderRadius.circular(12)),
     child: DropdownButtonHideUnderline(child: DropdownButton<String>(value: value, isExpanded: true, style: const TextStyle(color: Colors.black, fontSize: 15), items: values.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(), onChanged: onChanged)),
   );
+}
+
+/// Lets the requester choose the precise request location without exposing it
+/// on public request maps. The parent screen only publishes the city.
+class _RequestLocationPicker extends StatefulWidget {
+  const _RequestLocationPicker({this.initialLocation});
+
+  final LatLng? initialLocation;
+
+  @override
+  State<_RequestLocationPicker> createState() => _RequestLocationPickerState();
+}
+
+class _RequestLocationPickerState extends State<_RequestLocationPicker> {
+  static const _red = Color(0xffcf2929);
+  static const _philippinesCenter = LatLng(12.8797, 121.7740);
+  late LatLng _pickedLocation;
+  late bool _hasPickedLocation;
+
+  @override
+  void initState() {
+    super.initState();
+    _pickedLocation = widget.initialLocation ?? _philippinesCenter;
+    _hasPickedLocation = widget.initialLocation != null;
+  }
+
+  void _pick(LatLng location) => setState(() {
+        _pickedLocation = location;
+        _hasPickedLocation = true;
+      });
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(
+          backgroundColor: _red,
+          foregroundColor: Colors.white,
+          title: const Text('Set Location', style: TextStyle(fontWeight: FontWeight.w700)),
+        ),
+        body: Stack(
+          children: [
+            FlutterMap(
+              options: MapOptions(
+                initialCenter: _pickedLocation,
+                initialZoom: widget.initialLocation == null ? 5.7 : 15,
+                onTap: (_, location) => _pick(location),
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.lifelink',
+                ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: _pickedLocation,
+                      width: 52,
+                      height: 52,
+                      child: const Icon(Icons.location_on, color: _red, size: 52),
+                    ),
+                  ],
+                ),
+                const RichAttributionWidget(
+                  attributions: [TextSourceAttribution('OpenStreetMap contributors')],
+                ),
+              ],
+            ),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 20,
+              child: SafeArea(
+                top: false,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [BoxShadow(color: Color(0x26000000), blurRadius: 14, offset: Offset(0, 4))],
+                  ),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Text('Tap the map to place the pin', style: TextStyle(color: Color(0xff13223c), fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 5),
+                    const Text('Your exact pin stays private until a donor accepts.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xff697991), fontSize: 12)),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: FilledButton.icon(
+                        onPressed: _hasPickedLocation
+                            ? () => Navigator.of(context).pop(_pickedLocation)
+                            : null,
+                        style: FilledButton.styleFrom(backgroundColor: _red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                        icon: const Icon(Icons.check),
+                        label: const Text('Confirm Location', style: TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 }

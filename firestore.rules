@@ -10,6 +10,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, create, update, delete: if request.auth != null &&
         request.auth.uid == userId;
+
     }
 
     // This collection has only the fields safe to show in donor search.
@@ -27,7 +28,19 @@ service cloud.firestore {
     // Only the request owner can create, edit, or remove their own request.
     match /users/{userId}/requests/{requestId} {
       allow create: if isVerifiedUser() && request.auth.uid == userId;
-      allow update, delete: if isVerifiedUser() && request.auth.uid == userId;
+      allow delete: if isVerifiedUser() && request.auth.uid == userId;
+      // The request owner manages their request. A verified donor may only
+      // claim an unclaimed active request using their own account ID.
+      allow update: if isVerifiedUser() && (
+        (request.auth.uid == userId &&
+         (request.resource.data.status != 'Completed' ||
+          (resource.data.status == 'Accepted' &&
+           request.resource.data.acceptedDonorId == resource.data.acceptedDonorId &&
+           request.resource.data.completedDonorId == resource.data.acceptedDonorId))) ||
+        (resource.data.status == 'Active' &&
+         request.resource.data.status == 'Accepted' &&
+         request.resource.data.acceptedDonorId == request.auth.uid)
+      );
     }
 
     match /chats/{chatId} {

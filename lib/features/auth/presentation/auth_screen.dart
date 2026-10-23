@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../services/location_geocoding_service.dart';
 import 'forgot_password_screen.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -494,11 +495,21 @@ class _CreateAccountPageState extends State<_CreateAccountPage> {
             'createdAt': FieldValue.serverTimestamp(),
           },
         });
+        final coordinates = await LocationGeocodingService.findPhilippineCity(
+          city: _city.text,
+          province: _province.text,
+        );
         await FirebaseFirestore.instance.collection('donors').doc(user.uid).set({
           'name': fullName,
           'bloodType': _bloodType,
           'city': _city.text.trim(),
+          'address': _formattedAddress,
+          'phone': _phone.text.trim(),
           'isAvailable': true,
+          if (coordinates != null) ...{
+            'latitude': coordinates.latitude,
+            'longitude': coordinates.longitude,
+          },
         });
       }
 

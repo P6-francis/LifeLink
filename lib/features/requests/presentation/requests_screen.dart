@@ -89,7 +89,8 @@ class _RequestsScreenState extends State<RequestsScreen> {
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _visibleRequests(List<QueryDocumentSnapshot<Map<String, dynamic>>> requests) {
     final visible = requests.where((request) {
-    final active = (request.data()['status'] as String? ?? 'Active') == 'Active';
+    final status = request.data()['status'] as String? ?? 'Active';
+    final active = status == 'Active' || status == 'Accepted';
     return _showHistory ? !active : active;
     }).toList();
     visible.sort((a, b) {
@@ -136,11 +137,13 @@ class _MyRequestCardState extends State<_MyRequestCard> {
         : 'User';
   }
   String get bloodType => widget.data['bloodType'] as String? ?? 'Unknown';
+  int get bloodBagsNeeded => (widget.data['bloodBagsNeeded'] as num?)?.toInt() ?? 1;
   String get location => widget.data['hospital'] as String? ?? 'Unknown hospital';
   String get city => widget.data['city'] as String? ?? 'Unknown city';
   String get urgency => widget.data['urgency'] as String? ?? 'Normal';
   String get status => widget.data['status'] as String? ?? 'Active';
-  bool get _isActive => status == 'Active';
+  String? get acceptedDonorName => (widget.data['acceptedDonorName'] as String?)?.trim();
+  bool get _isActive => status == 'Active' || status == 'Accepted';
   bool get _isCancelled => status == 'Cancelled';
 
   String get age {
@@ -172,6 +175,8 @@ class _MyRequestCardState extends State<_MyRequestCard> {
                 const Text('Blood type', style: TextStyle(color: Color(0xff8491a5), fontSize: 11, fontWeight: FontWeight.w600)),
                 const SizedBox(width: 6),
                 _pill(bloodType, const Color(0xffffe8ec), const Color(0xffd9283b)),
+                const SizedBox(width: 8),
+                Text('$bloodBagsNeeded bag${bloodBagsNeeded == 1 ? '' : 's'} needed', style: const TextStyle(color: Color(0xff52627c), fontSize: 12, fontWeight: FontWeight.w600)),
               ]),
               const SizedBox(height: 7),
               Row(children: [
@@ -195,11 +200,15 @@ class _MyRequestCardState extends State<_MyRequestCard> {
           ]),
           if (_isActive) ...[
             const Padding(padding: EdgeInsets.symmetric(vertical: 14), child: Divider(height: 1, color: Color(0xffedf0f4))),
+            if (status == 'Accepted') ...[
+              Row(children: [const Icon(Icons.volunteer_activism_outlined, size: 16, color: Color(0xff249b60)), const SizedBox(width: 6), Expanded(child: Text('${acceptedDonorName?.isNotEmpty == true ? acceptedDonorName : 'A donor'} accepted this request.', style: const TextStyle(color: Color(0xff249b60), fontSize: 13, fontWeight: FontWeight.w600)))]),
+              const SizedBox(height: 10),
+            ],
             Row(children: [
               Expanded(child: SizedBox(height: 43, child: FilledButton.icon(
-                onPressed: () => _markAsDone(context),
+                onPressed: status == 'Accepted' ? () => _markAsDone(context) : null,
                 icon: const Icon(Icons.check_rounded, size: 18),
-                label: const Text('Mark done', style: TextStyle(fontWeight: FontWeight.w700)),
+                label: Text(status == 'Accepted' ? 'Mark done' : 'Waiting for donor', style: const TextStyle(fontWeight: FontWeight.w700)),
                 style: FilledButton.styleFrom(backgroundColor: const Color(0xff219a45), elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               ))),
               const SizedBox(width: 8),
@@ -252,6 +261,11 @@ class _MyRequestCardState extends State<_MyRequestCard> {
   }
 
   Future<void> _markAsDone(BuildContext context) async {
+    final acceptedDonorId = widget.data['acceptedDonorId'] as String?;
+    if (acceptedDonorId == null || acceptedDonorId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A donor must accept this request before it can be completed.')));
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => _confirmationDialog(
@@ -268,6 +282,8 @@ class _MyRequestCardState extends State<_MyRequestCard> {
     try {
       await widget.reference.update({
         'status': 'Completed',
+        'completedDonorId': acceptedDonorId,
+        'completedDonorName': widget.data['acceptedDonorName'] as String? ?? 'LifeLink donor',
         'completedAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });

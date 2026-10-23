@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../../services/location_geocoding_service.dart';
+
 const _red = Color(0xffcf2929);
 const _pageBg = Color(0xfff7f8fa);
 
@@ -164,11 +166,21 @@ class _EditInformationScreenState extends State<EditInformationScreen> {
       }, SetOptions(merge: true));
       final profile = await userDocument.get();
       final info = profile.data()?['userInformation'] as Map<String, dynamic>? ?? {};
+      final coordinates = await LocationGeocodingService.findPhilippineCity(
+        city: city,
+        province: _province.text,
+      );
       await FirebaseFirestore.instance.collection('donors').doc(user.uid).set({
         'name': name,
         'bloodType': info['bloodType'] as String? ?? '',
         'city': city,
+        'address': address,
+        'phone': _phone.text.trim(),
         'isAvailable': (info['bloodType'] as String? ?? '').isNotEmpty,
+        if (coordinates != null) ...{
+          'latitude': coordinates.latitude,
+          'longitude': coordinates.longitude,
+        },
       }, SetOptions(merge: true));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Information updated.')));
@@ -353,196 +365,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       );
 }
 
-class ContactNumberScreen extends StatefulWidget {
-  const ContactNumberScreen({super.key});
-
-  @override
-  State<ContactNumberScreen> createState() => _ContactNumberScreenState();
-}
-
-class _ContactNumberScreenState extends State<ContactNumberScreen> {
-  final _number = TextEditingController(text: '09123456789');
-
-  @override
-  void dispose() {
-    _number.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => _page(
-        title: 'Contact Number',
-        child: _card(
-          Column(
-            children: [
-              const SizedBox(height: 15),
-              const CircleAvatar(
-                radius: 31,
-                backgroundColor: Color(0xffffe8ec),
-                child: Icon(Icons.phone, color: _red, size: 27),
-              ),
-              const SizedBox(height: 17),
-              const Text(
-                'This number is used to contact you when a donor\nresponds to your request.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Color(0xff62738d), fontSize: 14),
-              ),
-              const SizedBox(height: 31),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Phone Number',
-                  style: TextStyle(color: Color(0xff13223c), fontSize: 16),
-                ),
-              ),
-              const SizedBox(height: 7),
-              _input(_number, '09123456789',
-                  keyboardType: TextInputType.phone),
-              const SizedBox(height: 16),
-              _primaryButton(
-                'Save Number',
-                () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Contact number saved.')),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-}
-
-class DonationHistoryScreen extends StatelessWidget {
-  const DonationHistoryScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) => _page(
-        title: 'Donation History',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _card(
-              const Row(
-                children: [
-                  Expanded(child: _HistoryStat('4', 'Total Donations')),
-                  SizedBox(width: 10),
-                  Expanded(child: _HistoryStat('O+', 'Blood Type')),
-                  SizedBox(width: 10),
-                  Expanded(child: _HistoryStat('93', 'Smart Rank')),
-                ],
-              ),
-            ),
-            const SizedBox(height: 15),
-            const Text(
-              'ALL DONATIONS',
-              style: TextStyle(
-                color: Color(0xff8b9ab2),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: .8,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const _DonationCard(
-                'LMMC, San Fernando', 'Jul 14, 2025', 'Maria S.'),
-            const SizedBox(height: 9),
-            const _DonationCard(
-                'Ilocos Sur Provincial', 'Apr 2, 2025', 'Roberto C.'),
-            const SizedBox(height: 9),
-            const _DonationCard(
-                'Bacnotan District Hospital', 'Jan 18, 2025', 'Anna R.'),
-            const SizedBox(height: 9),
-            const _DonationCard(
-                'LMMC, San Fernando', 'Oct 5, 2024', 'Pedro L.'),
-          ],
-        ),
-      );
-}
-
-class _HistoryStat extends StatelessWidget {
-  const _HistoryStat(this.number, this.label);
-  final String number, label;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        height: 66,
-        decoration: BoxDecoration(
-          color: const Color(0xffffe8ec),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              number,
-              style: const TextStyle(
-                color: _red,
-                fontWeight: FontWeight.w700,
-                fontSize: 19,
-              ),
-            ),
-            Text(
-              label,
-              style: const TextStyle(color: Color(0xff62738d), fontSize: 11),
-            ),
-          ],
-        ),
-      );
-}
-
-class _DonationCard extends StatelessWidget {
-  const _DonationCard(this.hospital, this.date, this.recipient);
-  final String hospital, date, recipient;
-
-  @override
-  Widget build(BuildContext context) => _card(
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    hospital,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  Text(date, style: const TextStyle(color: Color(0xff72829a))),
-                  Text(
-                    'Recipient: $recipient',
-                    style: const TextStyle(color: Color(0xff72829a)),
-                  ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                _badge('O+', const Color(0xffffe8ec), _red),
-                const SizedBox(height: 6),
-                _badge('Completed', const Color(0xffe6f4e7),
-                    const Color(0xff20913a)),
-              ],
-            ),
-          ],
-        ),
-      );
-
-  Widget _badge(String text, Color bg, Color fg) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(
-          text,
-          style:
-              TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 13),
-        ),
-      );
-}
-
 class AboutLifeLinkScreen extends StatelessWidget {
   const AboutLifeLinkScreen({super.key});
 
@@ -671,7 +493,7 @@ class AboutLifeLinkScreen extends StatelessWidget {
                         SizedBox(height: 15),
                         Center(
                           child: Text(
-                            '© 2025 LifeLink. All rights reserved.',
+                            '© 2026 LifeLink. All rights reserved.',
                             style: TextStyle(
                               color: Color(0xff8a99b0),
                               fontSize: 12,
