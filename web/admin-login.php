@@ -48,7 +48,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="login-heading"><h1 id="login-title">Hello Admin</h1><p>Sign in with your authorized administrator account.</p></div>
             <form method="post" action="admin-login.php">
                 <label class="login-field"><span>Admin Email</span><input type="email" name="email" autocomplete="email" placeholder="Enter your email" required></label>
-                <label class="login-field"><span>Password</span><input type="password" name="password" autocomplete="current-password" placeholder="Enter your password" required></label>
+                <label class="login-field">
+                    <span>Password</span>
+                    <div class="password-wrap">
+                        <input type="password" id="password" name="password" autocomplete="current-password" placeholder="Enter your password" required>
+                        <button type="button" class="toggle-password" id="togglePassword" aria-label="Show password">
+                            <span class="material-icons-round slashed">visibility_off</span>
+                        </button>
+                    </div>
+                </label>
+                <div class="login-forgot"><a href="forgot-password.php">Forgot password?</a></div>
                 <?php if ($error !== ''): ?>
                     <p class="login-error" role="alert"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></p>
                 <?php endif; ?>
@@ -57,5 +66,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <p class="login-help">Only accounts assigned the <strong>admin</strong> can access this console.</p>
         </section>
     </main>
+    <script>
+        const pw = document.getElementById('password');
+        const btn = document.getElementById('togglePassword');
+
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            const show = pw.type === 'password';
+            pw.type = show ? 'text' : 'password';
+            const icon = btn.querySelector('.material-icons-round');
+            icon.textContent = show ? 'visibility' : 'visibility_off';
+            icon.classList.toggle('slashed', !show);
+            btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+        });
+    </script>
 </body>
 </html>

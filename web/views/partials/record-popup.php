@@ -21,6 +21,10 @@
             <?= blood_badge($entry['blood']) ?>
         </div>
         <div class="info-row">
+            <span class="info-label">Blood Bags:</span>
+            <span class="info-value"><?= e($entry['bags']) ?></span>
+        </div>
+        <div class="info-row">
             <span class="info-label">Status:</span>
             <?= status_badge($entry['status']) ?>
         </div>

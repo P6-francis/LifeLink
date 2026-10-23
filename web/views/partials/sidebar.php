@@ -3,7 +3,9 @@ $items = [
     'dashboard' => ['Dashboard', 'pie_chart'],
     'blood-requests' => ['Blood Request Records', 'water_drop'],
     'donations' => ['Donation Records', 'volunteer_activism'],
+    'reports' => ['User Reports', 'report_problem'],
     'notifications' => ['Notifications', 'notifications'],
+    'profile' => ['Profile', 'person'],
 ];
 ?>
 <aside class="sidebar" id="sidebar">

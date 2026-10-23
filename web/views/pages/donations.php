@@ -14,6 +14,7 @@ foreach ($pager['rows'] as $d) {
         e($d['id']),
         e($d['name']),
         blood_badge($d['blood']),
+        e($d['bags']),
         status_badge($d['status']),
         e($d['location']),
         e($d['date']),
@@ -31,6 +32,7 @@ foreach ($pager['rows'] as $d) {
             'heading' => $request['id'],
             'fields' => [['Recipient', $request['name']], ['Location', $request['location']], ['Date', $request['date']]],
             'blood' => $request['blood'],
+            'bags' => $request['bags'],
             'status' => $request['status'],
         ],
     ]);
@@ -53,7 +55,7 @@ foreach ($pager['rows'] as $d) {
         </div>
     </header>
     <?= partial('table', [
-        'columns' => ['DON ID', 'NAME', 'BLOOD TYPE', 'STATUS', 'LOCATION', 'DONATION DATE'],
+        'columns' => ['DON ID', 'NAME', 'BLOOD TYPE', 'BLOOD BAGS', 'STATUS', 'LOCATION', 'DONATION DATE'],
         'rows' => $rows,
         'popupIds' => $popupIds,
     ]) ?>

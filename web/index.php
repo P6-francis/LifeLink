@@ -20,9 +20,17 @@ $pages = [
         'title' => 'Donation Records',
         'subtitle' => 'Track and review blood donation activity.',
     ],
+    'reports' => [
+        'title' => 'User Reports',
+        'subtitle' => 'Manage and review user reports.',
+    ],
     'notifications' => [
         'title' => 'Notifications',
         'subtitle' => 'Recent activity and system alerts.',
+    ],
+    'profile' => [
+        'title' => 'Profile',
+        'subtitle' => 'Manage your account information and password.',
     ],
 ];
 

@@ -92,14 +92,15 @@ function page_url($page)
 function column_flex($label)
 {
     $l = strtoupper($label);
-    if (str_contains($l, 'NAME')) return 2.2;
+    if (str_contains($l, 'NAME')) return 1.8;
     if (str_contains($l, 'EMAIL')) return 2.4;
     if (str_contains($l, 'LOCATION')) return 1.8;
     if (str_contains($l, 'PHONE')) return 1.9;
     if (str_contains($l, 'DATE')) return 1.5;
     if (str_contains($l, 'STATUS')) return 1.4;
     if (str_contains($l, 'URGENCY')) return 1.3;
-    if ($l === 'BLOOD' || $l === 'TYPE') return 1.0;
+    if (str_contains($l, 'BAGS')) return 1.1;
+    if ($l === 'BLOOD' || $l === 'TYPE' || $l === 'BLOOD TYPE') return 1.0;
     if (str_contains($l, 'ID')) return 1.3;
     return 1.5;
 }
@@ -111,7 +112,7 @@ function blood_badge($type)
 
 function status_badge($status)
 {
-    $tones = ['active' => 'info', 'fulfilled' => 'success', 'cancelled' => 'danger'];
+    $tones = ['active' => 'info', 'fulfilled' => 'success', 'cancelled' => 'danger', 'pending' => 'warning', 'banned' => 'danger', 'dismissed' => 'neutral'];
     $tone = $tones[strtolower($status)] ?? 'neutral';
     return '<span class="badge-status tone-' . $tone . '"><i></i>' . e($status) . '</span>';
 }

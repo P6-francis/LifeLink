@@ -12,6 +12,7 @@ foreach ($pager['rows'] as $r) {
         e($r['id']),
         e($r['name']),
         blood_badge($r['blood']),
+        e($r['bags']),
         urgency_badge($r['urgency']),
         status_badge($r['status']),
         e($r['location']),
@@ -48,7 +49,7 @@ foreach ($pager['rows'] as $r) {
         </div>
     </header>
     <?= partial('table', [
-        'columns' => ['ACT ID', 'NAME', 'BLOOD TYPE', 'URGENCY', 'STATUS', 'LOCATION', 'REQUEST DATE'],
+        'columns' => ['ACT ID', 'NAME', 'BLOOD TYPE', 'BLOOD BAGS', 'URGENCY', 'STATUS', 'LOCATION', 'REQUEST DATE'],
         'rows' => $rows,
     ]) ?>
     <?= partial('pagination', ['pager' => $pager, 'noun' => 'results']) ?>

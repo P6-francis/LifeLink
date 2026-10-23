@@ -1,8 +1,11 @@
 <?php
 $flex = array_map('column_flex', $columns);
 $totalFlex = array_sum($flex);
-$minWidth = (int) round($totalFlex * 92 + 40 + 24 * (count($flex) - 1));
+$minWidth = (int) round($totalFlex * 64 + 40 + 24 * (count($flex) - 1));
 $popupIds = $popupIds ?? [];
+$centered = array_map(function ($label) {
+    return in_array(strtoupper($label), ['BLOOD BAGS', 'BLOOD TYPE'], true) ? ' class="is-center"' : '';
+}, $columns);
 ?>
 <div class="table-scroll">
     <table class="data-table" style="min-width:<?= $minWidth ?>px">
@@ -13,8 +16,8 @@ $popupIds = $popupIds ?? [];
         </colgroup>
         <thead>
             <tr>
-                <?php foreach ($columns as $label): ?>
-                    <th><?= e($label) ?></th>
+                <?php foreach ($columns as $i => $label): ?>
+                    <th<?= $centered[$i] ?>><?= e($label) ?></th>
                 <?php endforeach; ?>
             </tr>
         </thead>
@@ -25,8 +28,8 @@ $popupIds = $popupIds ?? [];
                 <?php else: ?>
                     <tr>
                 <?php endif; ?>
-                    <?php foreach ($row as $cell): ?>
-                        <td><?= $cell ?></td>
+                    <?php foreach ($row as $c => $cell): ?>
+                        <td<?= $centered[$c] ?>><?= $cell ?></td>
                     <?php endforeach; ?>
                 </tr>
             <?php endforeach; ?>
