@@ -1,3 +1,4 @@
+import '../features/chat/chat_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -35,6 +36,15 @@ class _AppShellState extends State<AppShell> {
       valueListenable: appTabIndex,
       builder: (context, index, _) => Scaffold(
         body: SafeArea(child: _screens[index]),
+              floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ChatScreen()),
+          );
+        },
+        child: const Icon(Icons.chat),
+      ),
         bottomNavigationBar: BottomNavigationBar(
           type: BottomNavigationBarType.fixed,
           currentIndex: index,
