@@ -79,7 +79,7 @@ class _Bubble extends StatelessWidget {
               color: isUser ? scheme.primaryContainer : scheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: SelectableText(message.text.isEmpty ? '…' : message.text),
+            child: SelectableText(message.text.isEmpty ? 'Typing' : message.text),
           ),
         ),
       ),
