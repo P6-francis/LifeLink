@@ -219,17 +219,6 @@ class _DonorMapScreenState extends State<DonorMapScreen> {
     );
   }
 
-  Widget _contactDetail(IconData icon, String value) => Row(children: [
-    Icon(icon, color: const Color(0xff71819a), size: 20),
-    const SizedBox(width: 10),
-    Expanded(child: Text(value, style: const TextStyle(color: Color(0xff52627c), fontSize: 15))),
-  ]);
-
-  Future<void> _callDonor(String phone) async {
-    final launched = await launchUrl(Uri(scheme: 'tel', path: phone));
-    if (!launched && mounted) showNotice(context, 'Unable to open the phone app.');
-  }
-
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: const Color(0xfff7f8fa),
@@ -395,10 +384,4 @@ class _Donor {
     String() => double.tryParse(value),
     _ => null,
   };
-}
-
-
-class _GridPainter extends CustomPainter {
-  @override void paint(Canvas canvas, Size size) { final paint = Paint()..color = const Color(0x22718b91)..strokeWidth = 1; for (double x = 0; x < size.width; x += 55) { canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint); } for (double y = 0; y < size.height; y += 33) { canvas.drawLine(Offset(0, y), Offset(size.width, y), paint); } }
-  @override bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

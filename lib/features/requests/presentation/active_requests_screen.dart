@@ -351,44 +351,8 @@ BoxDecoration _cardDecoration(double radius, {bool selected = false}) => BoxDeco
 Widget _requesterAvatar(String name, double size) => CircleAvatar(radius: size / 2, backgroundColor: const Color(0xffffe7eb), child: Text(name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(), style: TextStyle(color: const Color(0xffcf2929), fontSize: size * .38, fontWeight: FontWeight.w800)));
 Widget _bloodTypeBadge(String bloodType) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: const Color(0xffffe8ec), borderRadius: BorderRadius.circular(8)), child: Text(bloodType, style: const TextStyle(color: Color(0xffcf2929), fontSize: 11, fontWeight: FontWeight.w800)));
 Widget _detailRow(IconData icon, String text) => Row(children: [Icon(icon, size: 16, color: const Color(0xff8a99b0)), const SizedBox(width: 7), Expanded(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xff687891), fontSize: 13, fontWeight: FontWeight.w500)))]);
-Widget _bloodBadge(String type, double size) => Container(width: size, height: size, alignment: Alignment.center, decoration: BoxDecoration(color: const Color(0xffc81722), borderRadius: BorderRadius.circular(size == 40 ? 11 : 9)), child: Text(type, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)));
 Color _urgencyColor(String urgency) => urgency == 'Normal' ? const Color(0xff20913a) : const Color(0xffd9212a);
 Color _urgencyBg(String urgency) => urgency == 'Normal' ? const Color(0xffe7f5e8) : const Color(0xffffe8ec);
-
-class _MapPin extends StatelessWidget {
-  const _MapPin({required this.left, required this.top, required this.request, required this.onTap});
-  final double left, top;
-  final _RequestData request;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Positioned(
-        left: left,
-        top: top,
-        child: GestureDetector(
-          onTap: onTap,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Stack(clipBehavior: Clip.none, children: [
-              Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(color: _urgencyColor(request.urgency), shape: BoxShape.circle, boxShadow: const [BoxShadow(color: Color(0x25000000), blurRadius: 5, offset: Offset(0, 2))]),
-                child: _requesterAvatar(request.requesterName, 34),
-              ),
-              Positioned(
-                right: -8,
-                bottom: -3,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                  decoration: BoxDecoration(color: const Color(0xffcf2929), borderRadius: BorderRadius.circular(7), border: Border.all(color: Colors.white, width: 1.5)),
-                  child: Text(request.bloodType, style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800)),
-                ),
-              ),
-            ]),
-            CustomPaint(size: const Size(10, 7), painter: _PointerPainter(_urgencyColor(request.urgency))),
-          ]),
-        ),
-      );
-}
 
 class _RequestMapMarker extends StatelessWidget {
   const _RequestMapMarker({required this.request, required this.onTap});
@@ -422,5 +386,4 @@ class _RequestMapMarker extends StatelessWidget {
 class _CountBadge extends StatelessWidget { const _CountBadge(this.count); final int count; @override Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)), child: Text('• $count active', style: const TextStyle(color: Color(0xffd9212a), fontSize: 10, fontWeight: FontWeight.w700))); }
 class _Legend extends StatelessWidget { const _Legend(this.text, this.color); final String text; final Color color; @override Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)), child: Row(mainAxisSize: MainAxisSize.min, children: [CircleAvatar(radius: 2.5, backgroundColor: color), const SizedBox(width: 3), Text(text, style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w700))])); }
 class _Pill extends StatelessWidget { const _Pill(this.text); final String text; @override Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: _urgencyBg(text), borderRadius: BorderRadius.circular(10)), child: Text(text, style: TextStyle(color: _urgencyColor(text), fontSize: 10, fontWeight: FontWeight.w700))); }
-class _MapRoadsPainter extends CustomPainter { @override void paint(Canvas canvas, Size size) { final road = Paint()..color = const Color(0xffc0d6b8)..strokeWidth = 5; canvas.drawLine(Offset(0, 51), Offset(size.width, 40), road); canvas.drawLine(Offset(0, 102), Offset(size.width, 81), road); canvas.drawLine(const Offset(140, 0), const Offset(164, 185), road); canvas.drawLine(const Offset(238, 0), const Offset(255, 185), road); } @override bool shouldRepaint(covariant CustomPainter oldDelegate) => false; }
 class _PointerPainter extends CustomPainter { const _PointerPainter(this.color); final Color color; @override void paint(Canvas canvas, Size size) { final path = Path()..moveTo(0, 0)..lineTo(size.width, 0)..lineTo(size.width / 2, size.height)..close(); canvas.drawPath(path, Paint()..color = color); } @override bool shouldRepaint(covariant CustomPainter oldDelegate) => false; }
