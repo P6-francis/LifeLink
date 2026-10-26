@@ -6,7 +6,17 @@ class ChatController extends ChangeNotifier {
   final List<ChatMessage> messages = [];
   bool isLoading = false;
 
-  ChatController(this.service);
+  ChatController(this.service) {
+    // The greeting is always the first message in the list.
+    messages.add(
+      ChatMessage(
+        isUser: false,
+        text: 'Hi! I\'m the LifeLink assistant. I can help you find donors, '
+            'understand blood types, or create a blood request. '
+            'How can I help you today?',
+      ),
+    );
+  }
 
   Future<void> send(String text) async {
     if (text.trim().isEmpty || isLoading) return;
@@ -18,8 +28,11 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final history = messages.sublist(0, messages.length - 1);
-      await for (final chunk in service.reply(history)) {
+      // Skip the greeting (index 0) so the AI only sees the real conversation.
+      final history = messages.sublist(1, messages.length - 1);
+      await for (final chunk in service
+          .reply(history)
+          .timeout(const Duration(seconds: 45))) {
         botMessage.text += chunk;
         notifyListeners();
       }
