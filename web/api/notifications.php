@@ -10,18 +10,20 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$total = count(NOTIFICATIONS);
+$events = dashboard_report_notifications();
+$ids = array_column($events, 'id');
+$total = count($ids);
 $read = $_SESSION['read_notifications'];
 $action = $_POST['action'] ?? '';
 
 if ($action === 'all') {
-    $read = range(0, $total - 1);
+    $read = $ids;
 } elseif ($action === 'toggle') {
-    $index = filter_input(INPUT_POST, 'index', FILTER_VALIDATE_INT);
-    if ($index !== null && $index !== false && $index >= 0 && $index < $total) {
-        $key = array_search($index, $read, true);
+    $id = trim((string) ($_POST['id'] ?? ''));
+    if (in_array($id, $ids, true)) {
+        $key = array_search($id, $read, true);
         if ($key === false) {
-            $read[] = $index;
+            $read[] = $id;
         } else {
             unset($read[$key]);
         }

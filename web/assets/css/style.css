@@ -314,16 +314,34 @@ button {
     font-size: 24px;
 }
 
-.bell-dot {
+.bell-count {
     position: absolute;
-    top: 1px;
-    right: 1px;
-    width: 5px;
-    height: 5px;
+    top: -5px;
+    right: -7px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
     border-radius: 50%;
-    background: var(--maroon);
-    border: 1.5px solid #fff;
-    box-sizing: content-box;
+    background: #cf2929;
+    border: 2px solid #fff;
+    box-sizing: border-box;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 12px;
+    text-align: center;
+}
+
+.nav-count {
+    margin-left: auto;
+    min-width: 18px;
+    padding: 2px 5px;
+    border-radius: 999px;
+    background: #cf2929;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    text-align: center;
 }
 
 .topbar-user {
@@ -1139,7 +1157,101 @@ a.page-btn.active:hover {
     padding: 0 20px 20px;
 }
 
+/* Profile actions belong to their full form row, not beneath one column. */
+.profile-wrap .form-grid .form-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 4px 0 0;
+    min-height: 42px;
+}
+
+.profile-wrap .form-grid .form-actions .btn-primary {
+    min-width: 142px;
+    text-align: center;
+}
+
+/* Desktop admin forms keep the action in the far-right column. */
+@container (min-width: 860px) {
+    .profile-wrap .profile-inline-form {
+        grid-template-columns: repeat(3, minmax(170px, 1fr)) auto;
+        align-items: end;
+    }
+
+    .profile-wrap .profile-inline-form .form-actions {
+        grid-column: auto;
+        padding: 0 0 1px;
+        min-height: 38px;
+        justify-content: flex-end;
+        align-self: start;
+        margin-top: 20px;
+    }
+
+    .profile-wrap .profile-inline-form .form-actions .btn-primary {
+        min-width: 126px;
+        white-space: nowrap;
+    }
+
+    .profile-wrap .profile-inline-form > .form-field:first-child:nth-last-child(2) {
+        grid-column: 1 / 4;
+    }
+}
+
+.profile-wrap .form-actions .btn-primary {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center;
+    line-height: 1 !important;
+}
+
+.admin-security-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 20px;
+    padding: 20px;
+}
+
+.admin-security-row .form-field {
+    width: min(460px, 100%);
+}
+
+.admin-security-row .btn-primary {
+    margin-left: auto;
+    min-width: 190px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+@container (max-width: 559px) {
+    .admin-security-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .admin-security-row .form-field,
+    .admin-security-row .btn-primary {
+        width: 100%;
+        margin-left: 0;
+    }
+}
+
+@container (max-width: 559px) {
+    .profile-wrap .form-grid .form-actions {
+        justify-content: stretch;
+    }
+
+    .profile-wrap .form-grid .form-actions .btn-primary {
+        width: 100%;
+    }
+}
+
 .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     height: 38px;
     padding: 0 18px;
     border: 0;
@@ -1149,6 +1261,8 @@ a.page-btn.active:hover {
     font-family: inherit;
     font-size: 11px;
     font-weight: 700;
+    line-height: 1;
+    text-decoration: none;
     cursor: pointer;
     transition: background .15s ease;
 }
@@ -1212,8 +1326,42 @@ a.page-btn.active:hover {
 
 .moderation-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 12px;
+}
+
+.moderation-note,
+.moderation-notice {
+    margin: 12px 0 0;
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: #FFF5E5;
+    color: #9A5B00;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.moderation-note {
+    flex-basis: 100%;
+}
+
+.moderation-note-success {
+    background: #EAF8EF;
+    color: #18864B;
+}
+
+.notif-review-link {
+    display: inline-flex;
+    margin-top: 8px;
+    color: var(--red);
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.notif-review-link:hover {
+    text-decoration: underline;
 }
 
 .action-btn {

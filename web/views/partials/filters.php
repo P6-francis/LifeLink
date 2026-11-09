@@ -11,6 +11,13 @@
                                value="<?= e($field['value']) ?>" placeholder="<?= e($field['hint']) ?>" autocomplete="off">
                     </div>
                 </div>
+            <?php elseif ($field['type'] === 'date'): ?>
+                <div class="filter-field select">
+                    <label class="filter-label" for="f-<?= e($field['name']) ?>"><?= e($field['label']) ?></label>
+                    <div class="search-box">
+                        <input type="date" id="f-<?= e($field['name']) ?>" name="<?= e($field['name']) ?>" value="<?= e($field['value']) ?>">
+                    </div>
+                </div>
             <?php else: ?>
                 <div class="filter-field select">
                     <label class="filter-label" for="f-<?= e($field['name']) ?>"><?= e($field['label']) ?></label>

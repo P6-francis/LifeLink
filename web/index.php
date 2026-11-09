@@ -41,7 +41,15 @@ if (!isset($pages[$current])) {
 $meta = $pages[$current];
 
 ob_start();
-require __DIR__ . '/views/pages/' . $current . '.php';
-$content = ob_get_clean();
+try {
+    require __DIR__ . '/views/pages/' . $current . '.php';
+    $content = ob_get_clean();
+} catch (Throwable $exception) {
+    ob_end_clean();
+    error_log('LifeLink Firebase dashboard error: ' . $exception->getMessage());
+    $isLocal = in_array($_SERVER['HTTP_HOST'] ?? '', ['lifelink-admin.local', 'lifelink-admin.local:80', 'localhost', 'localhost:80'], true);
+    $detail = $isLocal ? '<p><strong>Local diagnostic:</strong> ' . e($exception->getMessage()) . '</p>' : '';
+    $content = '<section class="panel"><header class="panel-head"><div><h2>Firebase connection needs configuration</h2><p>Set the server environment variables from web/.env.example, then reload the dashboard.</p>' . $detail . '</div></header></section>';
+}
 
 require __DIR__ . '/views/layout.php';

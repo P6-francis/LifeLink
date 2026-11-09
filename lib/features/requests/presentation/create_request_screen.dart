@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 
+import '../../../app/lifelink_theme.dart';
 import '../../../services/location_geocoding_service.dart';
 
 class CreateRequestScreen extends StatefulWidget {
@@ -23,7 +24,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   final _contact = TextEditingController();
   final _bloodBags = TextEditingController();
   String _group = 'A+';
-  String _urgency = 'Normal';
   LatLng? _selectedLocation;
   bool get _isEditing => widget.requestRef != null;
 
@@ -38,10 +38,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     final bags = data['bloodBagsNeeded'];
     if (bags is num) _bloodBags.text = bags.toInt().toString();
     _group = data['bloodType'] as String? ?? _group;
-    _urgency = data['urgency'] as String? ?? _urgency;
     final latitude = data['latitude'];
     final longitude = data['longitude'];
-    if (latitude is num && longitude is num) _selectedLocation = LatLng(latitude.toDouble(), longitude.toDouble());
+    if (latitude is num && longitude is num)
+      _selectedLocation = LatLng(latitude.toDouble(), longitude.toDouble());
   }
 
   @override
@@ -54,54 +54,97 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
   }
 
   Future<void> _postRequest() async {
-    if ([_hospital, _city, _contact, _bloodBags].any((controller) => controller.text.trim().isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please complete all required fields.')));
+    if ([
+      _hospital,
+      _city,
+      _contact,
+      _bloodBags,
+    ].any((controller) => controller.text.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please complete all required fields.')),
+      );
       return;
     }
     final bloodBagsNeeded = int.tryParse(_bloodBags.text.trim());
-    if (bloodBagsNeeded == null || bloodBagsNeeded < 1 || bloodBagsNeeded > 100) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid number of blood bags (1–100).')));
+    if (bloodBagsNeeded == null ||
+        bloodBagsNeeded < 1 ||
+        bloodBagsNeeded > 100) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a valid number of blood bags (1–100).'),
+        ),
+      );
       return;
     }
 
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please sign in before creating a request.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please sign in before creating a request.'),
+        ),
+      );
       return;
     }
 
     try {
       await user.reload();
       if (FirebaseAuth.instance.currentUser?.emailVerified != true) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Verify your email before creating a request.')));
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Verify your email before creating a request.'),
+            ),
+          );
         return;
       }
-
     } on FirebaseAuthException catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message ?? 'Unable to verify your account. Please try again.')));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error.message ??
+                  'Unable to verify your account. Please try again.',
+            ),
+          ),
+        );
       return;
     }
 
     try {
-      final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      final userInformation = profile.data()?['userInformation'] as Map<String, dynamic>?;
-      final requesterName = (userInformation?['fullName'] as String?)?.trim().isNotEmpty == true
+      final profile = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final userInformation =
+          profile.data()?['userInformation'] as Map<String, dynamic>?;
+      final avatarUrl =
+          (profile.data()?['avatarUrl'] as String?)?.trim().isNotEmpty == true
+          ? (profile.data()?['avatarUrl'] as String).trim()
+          : user.photoURL?.trim();
+      final requesterName =
+          (userInformation?['fullName'] as String?)?.trim().isNotEmpty == true
           ? (userInformation?['fullName'] as String).trim()
-          : (user.displayName?.trim().isNotEmpty == true ? user.displayName!.trim() : 'Requester');
+          : (user.displayName?.trim().isNotEmpty == true
+                ? user.displayName!.trim()
+                : 'Requester');
       final coordinates = _selectedLocation == null
           ? await LocationGeocodingService.findPhilippineCity(city: _city.text)
-          : GeoCoordinates(latitude: _selectedLocation!.latitude, longitude: _selectedLocation!.longitude);
+          : GeoCoordinates(
+              latitude: _selectedLocation!.latitude,
+              longitude: _selectedLocation!.longitude,
+            );
       final requestData = {
         'ownerId': user.uid,
         // A snapshot used by request cards and map pins. The profile remains the
         // source of truth, while this keeps the request readable offline.
         'requesterName': requesterName,
+        if (avatarUrl?.isNotEmpty == true) 'requesterAvatarUrl': avatarUrl,
         'hospital': _hospital.text.trim(),
         'city': _city.text.trim(),
         'contactNumber': _contact.text.trim(),
         'bloodType': _group,
         'bloodBagsNeeded': bloodBagsNeeded,
-        'urgency': _urgency,
         if (coordinates != null) ...{
           'latitude': coordinates.latitude,
           'longitude': coordinates.longitude,
@@ -111,11 +154,15 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
       if (_isEditing) {
         await widget.requestRef!.update(requestData);
       } else {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('requests').add({
-          ...requestData,
-          'status': 'Active',
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('requests')
+            .add({
+              ...requestData,
+              'status': 'Active',
+              'createdAt': FieldValue.serverTimestamp(),
+            });
       }
 
       if (!mounted) return;
@@ -195,7 +242,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
                     ),
                     child: const Text(
                       'Back to my requests',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                 ),
@@ -214,19 +264,40 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xfff7f8fa),
-        appBar: AppBar(
-          backgroundColor: _red,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          titleSpacing: 4,
-          title: Text(_isEditing ? 'Edit Request' : 'Create Request', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+    backgroundColor: LifeLinkColors.canvas,
+    appBar: AppBar(
+      backgroundColor: LifeLinkColors.red,
+      foregroundColor: Colors.white,
+      titleSpacing: 4,
+      title: Text(
+        _isEditing ? 'Edit Request' : 'Create Request',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
         ),
-        body: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 22), children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 19),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), boxShadow: const [BoxShadow(color: Color(0x10000000), blurRadius: 5, offset: Offset(0, 2))]),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      ),
+    ),
+    body: ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(20, 22, 20, 19),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: LifeLinkColors.border),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0b17233b),
+                blurRadius: 18,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               _label('Hospital '),
               const SizedBox(height: 7),
               _input(_hospital, 'Enter hospital name'),
@@ -237,63 +308,136 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
               const SizedBox(height: 17),
               _label('Blood Type Needed '),
               const SizedBox(height: 7),
-              _select(value: _group, values: const ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'], onChanged: (value) => setState(() => _group = value!)),
+              _select(
+                value: _group,
+                values: const [
+                  'A+',
+                  'A-',
+                  'B+',
+                  'B-',
+                  'AB+',
+                  'AB-',
+                  'O+',
+                  'O-',
+                ],
+                onChanged: (value) => setState(() => _group = value!),
+              ),
               const SizedBox(height: 17),
               _label('Blood Bags Needed'),
               const SizedBox(height: 7),
               _input(_bloodBags, 'e.g. 2', keyboardType: TextInputType.number),
               const SizedBox(height: 17),
-              _label('Urgency'),
-              const SizedBox(height: 7),
-              _select(value: _urgency, values: const ['Normal', 'Urgent'], onChanged: (value) => setState(() => _urgency = value!)),
-              const SizedBox(height: 7),
-              const Text('Target response time: this request should be accepted\nwithin 180 minutes.', style: TextStyle(color: Color(0xff8a99b0), fontSize: 12, height: 1.35)),
-              const SizedBox(height: 17),
               _label('Contact Number '),
               const SizedBox(height: 7),
-              _input(_contact, 'e.g. 09123456789', keyboardType: TextInputType.phone),
+              _input(
+                _contact,
+                'e.g. 09123456789',
+                keyboardType: TextInputType.phone,
+              ),
               const SizedBox(height: 17),
               _label('Location '),
               const SizedBox(height: 7),
               Container(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                decoration: BoxDecoration(border: Border.all(color: const Color(0xffdfe3e9)), borderRadius: BorderRadius.circular(12)),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(
-                    _selectedLocation == null
-                        ? 'No location selected yet.'
-                        : 'Pin selected: ${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)}',
-                    style: const TextStyle(color: Color(0xff8a99b0), fontSize: 13),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text('Privacy: only your city is shown publicly until a\ndonor accepts this request.', style: TextStyle(color: _red, fontSize: 12, height: 1.35)),
-                  const SizedBox(height: 10),
-                  SizedBox(width: double.infinity, height: 42, child: OutlinedButton.icon(
-                    onPressed: _selectLocationOnMap,
-                    style: OutlinedButton.styleFrom(foregroundColor: _red, side: const BorderSide(color: _red), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                    icon: const Icon(Icons.location_on, size: 18),
-                    label: const Text('Set Location on Map', style: TextStyle(fontWeight: FontWeight.w700)),
-                  )),
-                ]),
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xffdfe3e9)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _selectedLocation == null
+                          ? 'No location selected yet.'
+                          : 'Pin selected: ${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)}',
+                      style: const TextStyle(
+                        color: Color(0xff8a99b0),
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Privacy: only your city is shown publicly until a\ndonor accepts this request.',
+                      style: TextStyle(color: _red, fontSize: 12, height: 1.35),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 42,
+                      child: OutlinedButton.icon(
+                        onPressed: _selectLocationOnMap,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _red,
+                          side: const BorderSide(color: _red),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: const Icon(Icons.location_on, size: 18),
+                        label: const Text(
+                          'Set Location on Map',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 20),
-              SizedBox(width: double.infinity, height: 49, child: FilledButton.icon(
-                onPressed: _postRequest,
-                style: FilledButton.styleFrom(backgroundColor: _red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                icon: Icon(_isEditing ? Icons.save_outlined : Icons.add, size: 20),
-                label: Text(_isEditing ? 'Save Changes' : 'Create Request', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-              )),
-            ]),
+              SizedBox(
+                width: double.infinity,
+                height: 49,
+                child: FilledButton.icon(
+                  onPressed: _postRequest,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _red,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: Icon(
+                    _isEditing ? Icons.save_outlined : Icons.add,
+                    size: 20,
+                  ),
+                  label: Text(
+                    _isEditing ? 'Save Changes' : 'Create Request',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ]),
-      );
+        ),
+      ],
+    ),
+  );
 
-  Widget _label(String text) => Text(text, style: const TextStyle(color: Color(0xff13223c), fontSize: 15.5, fontWeight: FontWeight.w500));
+  Widget _label(String text) => Text(
+    text,
+    style: const TextStyle(
+      color: Color(0xff13223c),
+      fontSize: 15.5,
+      fontWeight: FontWeight.w500,
+    ),
+  );
 
   Future<void> _selectLocationOnMap() async {
-    final selected = await Navigator.of(context).push<LatLng>(MaterialPageRoute(builder: (_) => _RequestLocationPicker(initialLocation: _selectedLocation)));
+    final selected = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        builder: (_) =>
+            _RequestLocationPicker(initialLocation: _selectedLocation),
+      ),
+    );
     if (selected == null) return;
-    final city = await LocationGeocodingService.findCityAt(GeoCoordinates(latitude: selected.latitude, longitude: selected.longitude));
+    final city = await LocationGeocodingService.findCityAt(
+      GeoCoordinates(
+        latitude: selected.latitude,
+        longitude: selected.longitude,
+      ),
+    );
     if (!mounted) return;
     setState(() {
       _selectedLocation = selected;
@@ -301,18 +445,57 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     });
   }
 
-  Widget _input(TextEditingController controller, String hint, {TextInputType? keyboardType}) => SizedBox(height: 42, child: TextField(
-    controller: controller,
-    keyboardType: keyboardType,
-    style: const TextStyle(color: Color(0xff13223c), fontSize: 15),
-    decoration: InputDecoration(hintText: hint, hintStyle: const TextStyle(color: Color(0xff8a99b0), fontSize: 14.5), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: Color(0xffdfe3e9)), borderRadius: BorderRadius.circular(12)), focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: _red), borderRadius: BorderRadius.circular(12))),
-  ));
+  Widget _input(
+    TextEditingController controller,
+    String hint, {
+    TextInputType? keyboardType,
+  }) => SizedBox(
+    height: 42,
+    child: TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      style: const TextStyle(color: Color(0xff13223c), fontSize: 15),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: Color(0xff8a99b0), fontSize: 14.5),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: Color(0xffdfe3e9)),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: _red),
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    ),
+  );
 
-  Widget _select({required String value, required List<String> values, required ValueChanged<String?> onChanged}) => Container(
+  Widget _select({
+    required String value,
+    required List<String> values,
+    required ValueChanged<String?> onChanged,
+  }) => Container(
     height: 42,
     padding: const EdgeInsets.symmetric(horizontal: 12),
-    decoration: BoxDecoration(border: Border.all(color: const Color(0xffdfe3e9)), borderRadius: BorderRadius.circular(12)),
-    child: DropdownButtonHideUnderline(child: DropdownButton<String>(value: value, isExpanded: true, style: const TextStyle(color: Colors.black, fontSize: 15), items: values.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(), onChanged: onChanged)),
+    decoration: BoxDecoration(
+      border: Border.all(color: const Color(0xffdfe3e9)),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: value,
+        isExpanded: true,
+        style: const TextStyle(color: Colors.black, fontSize: 15),
+        items: values
+            .map((item) => DropdownMenuItem(value: item, child: Text(item)))
+            .toList(),
+        onChanged: onChanged,
+      ),
+    ),
   );
 }
 
@@ -341,80 +524,112 @@ class _RequestLocationPickerState extends State<_RequestLocationPicker> {
   }
 
   void _pick(LatLng location) => setState(() {
-        _pickedLocation = location;
-        _hasPickedLocation = true;
-      });
+    _pickedLocation = location;
+    _hasPickedLocation = true;
+  });
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          backgroundColor: _red,
-          foregroundColor: Colors.white,
-          title: const Text('Set Location', style: TextStyle(fontWeight: FontWeight.w700)),
-        ),
-        body: Stack(
+    appBar: AppBar(
+      backgroundColor: LifeLinkColors.red,
+      foregroundColor: Colors.white,
+      title: const Text(
+        'Set Location',
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+      ),
+    ),
+    body: Stack(
+      children: [
+        FlutterMap(
+          options: MapOptions(
+            initialCenter: _pickedLocation,
+            initialZoom: widget.initialLocation == null ? 5.7 : 15,
+            onTap: (_, location) => _pick(location),
+          ),
           children: [
-            FlutterMap(
-              options: MapOptions(
-                initialCenter: _pickedLocation,
-                initialZoom: widget.initialLocation == null ? 5.7 : 15,
-                onTap: (_, location) => _pick(location),
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.example.lifelink',
-                ),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: _pickedLocation,
-                      width: 52,
-                      height: 52,
-                      child: const Icon(Icons.location_on, color: _red, size: 52),
-                    ),
-                  ],
-                ),
-                const RichAttributionWidget(
-                  attributions: [TextSourceAttribution('OpenStreetMap contributors')],
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.example.lifelink',
+            ),
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: _pickedLocation,
+                  width: 52,
+                  height: 52,
+                  child: const Icon(Icons.location_on, color: _red, size: 52),
                 ),
               ],
             ),
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 20,
-              child: SafeArea(
-                top: false,
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: const [BoxShadow(color: Color(0x26000000), blurRadius: 14, offset: Offset(0, 4))],
-                  ),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    const Text('Tap the map to place the pin', style: TextStyle(color: Color(0xff13223c), fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 5),
-                    const Text('Your exact pin stays private until a donor accepts.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xff697991), fontSize: 12)),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: FilledButton.icon(
-                        onPressed: _hasPickedLocation
-                            ? () => Navigator.of(context).pop(_pickedLocation)
-                            : null,
-                        style: FilledButton.styleFrom(backgroundColor: _red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                        icon: const Icon(Icons.check),
-                        label: const Text('Confirm Location', style: TextStyle(fontWeight: FontWeight.w700)),
-                      ),
-                    ),
-                  ]),
-                ),
-              ),
+            const RichAttributionWidget(
+              attributions: [
+                TextSourceAttribution('OpenStreetMap contributors'),
+              ],
             ),
           ],
         ),
-      );
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: 20,
+          child: SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x26000000),
+                    blurRadius: 14,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Tap the map to place the pin',
+                    style: TextStyle(
+                      color: Color(0xff13223c),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  const Text(
+                    'Your exact pin stays private until a donor accepts.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xff697991), fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: FilledButton.icon(
+                      onPressed: _hasPickedLocation
+                          ? () => Navigator.of(context).pop(_pickedLocation)
+                          : null,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _red,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.check),
+                      label: const Text(
+                        'Confirm Location',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }

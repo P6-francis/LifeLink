@@ -3,20 +3,70 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isVerifiedUser() {
-      return request.auth != null && request.auth.token.email_verified == true;
+      return request.auth != null && request.auth.token.email_verified == true &&
+        (!exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
+         !('isBanned' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isBanned != true);
     }
 
     // Private profile data (email, phone, birthdate, etc.) is owner-only.
     match /users/{userId} {
+      // A suspended user may still read this one document so the app can show
+      // its suspension screen, but cannot alter or remove the ban flag.
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if isVerifiedUser() && request.auth.uid == userId &&
+        request.resource.data.isBanned != true;
+      allow update, delete: if isVerifiedUser() && request.auth.uid == userId &&
+        (!('isBanned' in resource.data) ||
+         request.resource.data.isBanned == resource.data.isBanned);
+
+    }
+
+    // Only the owner's avatar URL is exposed; private profile fields remain
+    // readable only by that owner.
+    match /profileAvatars/{userId} {
+      allow read: if request.auth != null;
+      allow create, update: if isVerifiedUser() &&
+        request.auth.uid == userId &&
+        request.resource.data.keys().hasOnly(['avatarUrl', 'updatedAt']) &&
+        request.resource.data.keys().hasAll(['avatarUrl', 'updatedAt']) &&
+        request.resource.data.avatarUrl is string &&
+        request.resource.data.updatedAt is timestamp;
+      allow delete: if isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    // The active phone's FCM token is private and can only be managed by its
+    // owner. The separate notification server uses Admin credentials to read it.
+    match /users/{userId}/pushDevices/{deviceId} {
       allow read, create, update, delete: if request.auth != null &&
         request.auth.uid == userId;
+    }
 
+    // Notification history is created only by the trusted Worker. A user can
+    // read, mark read, or remove only their own notification records.
+    match /users/{userId}/notifications/{notificationId} {
+      allow read, update, delete: if request.auth != null &&
+        request.auth.uid == userId;
+      allow create: if false;
     }
 
     // This collection has only the fields safe to show in donor search.
     match /donors/{userId} {
       allow read: if request.auth != null;
-      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+      allow create, update, delete: if isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    // Each user owns one private, persisted LifeLink Assistant conversation.
+    match /assistantChats/{userId} {
+      allow read, create, update, delete: if isVerifiedUser() &&
+        request.auth.uid == userId;
+    }
+
+    // Presence only stores online status and a last-active timestamp.
+    match /presence/{userId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if isVerifiedUser() &&
+        request.auth.uid == userId;
     }
 
     // Required for collectionGroup('requests'): a query may match this
@@ -56,6 +106,17 @@ service cloud.firestore {
           request.auth.uid == request.resource.data.senderId &&
           request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
       }
+    }
+
+    // Reports are private: a verified user can only create a report under
+    // their own account. Administrative review happens outside the client.
+    match /userReports/{reportId} {
+      // A signed-in user may only submit a report under their own ID. This
+      // intentionally does not require a freshly refreshed email-verification
+      // token, so reports are not lost on web/mobile token refresh delays.
+      allow create: if request.auth != null &&
+        request.auth.uid == request.resource.data.reporterId;
+      allow read, update, delete: if false;
     }
   }
 }

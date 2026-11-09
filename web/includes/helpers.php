@@ -31,16 +31,24 @@ function filter_rows(array $rows, $query, array $exact = [])
     $query = trim((string) $query);
 
     return array_values(array_filter($rows, function ($row) use ($query, $exact) {
-        if ($query !== '' && mb_stripos($row['name'], $query) === false && mb_stripos($row['id'], $query) === false) {
+        $searchable = implode(' ', array_map(static fn ($value) => is_scalar($value) ? (string) $value : '', $row));
+        if ($query !== '' && mb_stripos($searchable, $query) === false) {
             return false;
         }
         foreach ($exact as $field => $value) {
-            if ($value !== 'All' && $row[$field] !== $value) {
+            if ($value !== '' && $value !== 'All' && ((string) ($row[$field] ?? '') !== (string) $value)) {
                 return false;
             }
         }
         return true;
     }));
+}
+
+function filter_options(array $rows, string $field): array
+{
+    $values = array_values(array_unique(array_filter(array_map(static fn ($row) => (string) ($row[$field] ?? ''), $rows))));
+    natcasesort($values);
+    return array_merge(['All'], array_values($values));
 }
 
 function paginate(array $rows, $requested, $size = PAGE_SIZE)
@@ -112,7 +120,7 @@ function blood_badge($type)
 
 function status_badge($status)
 {
-    $tones = ['active' => 'info', 'fulfilled' => 'success', 'cancelled' => 'danger', 'pending' => 'warning', 'banned' => 'danger', 'dismissed' => 'neutral'];
+    $tones = ['active' => 'info', 'accepted' => 'info', 'completed' => 'success', 'fulfilled' => 'success', 'cancelled' => 'danger', 'pending' => 'warning', 'banned' => 'danger', 'dismissed' => 'neutral'];
     $tone = $tones[strtolower($status)] ?? 'neutral';
     return '<span class="badge-status tone-' . $tone . '"><i></i>' . e($status) . '</span>';
 }
@@ -124,9 +132,54 @@ function urgency_badge($urgency)
     return '<span class="badge-urgency urgency-' . $tone . '">' . e($urgency) . '</span>';
 }
 
-function unread_notifications()
+function dashboard_report_notifications(): array
 {
-    return count($_SESSION['read_notifications']) < count(NOTIFICATIONS);
+    static $cachedEvents = null;
+    if ($cachedEvents !== null) return $cachedEvents;
+
+    // Notifications need only the report fields. Do not load every user
+    // profile here; this code runs in the sidebar on every dashboard page.
+    $grouped = [];
+    foreach (firestore_collection('userReports') as $document) {
+        $data = $document['data'];
+        $reportedId = $data['reportedUserId'] ?? '';
+        $reporterId = $data['reporterId'] ?? '';
+        if ($reportedId === '' || ($data['status'] ?? 'Pending') !== 'Pending') continue;
+        $grouped[$reportedId] ??= [
+            'reporters' => [], 'name' => $data['reportedUserName'] ?? 'LifeLink user',
+            'date' => lifelink_date($data['createdAt'] ?? null), 'reportId' => $document['id'],
+        ];
+        if ($reporterId !== '') $grouped[$reportedId]['reporters'][$reporterId] = true;
+    }
+
+    $events = [];
+    foreach ($grouped as $reportedId => $group) {
+        $count = count($group['reporters']);
+        if ($count < LIFELINK_BAN_REPORT_THRESHOLD) continue;
+        $eventId = 'ban-review-' . $reportedId;
+        $events[] = [
+            'id' => $eventId,
+            'title' => 'Ban review required',
+            'body' => $group['name'] . ' was reported by ' . $count . ' different users. Review the reports and decide whether to ban the account.',
+            'time' => $group['date'],
+            'tone' => 'danger',
+            'reviewUrl' => 'index.php?page=reports&report=' . rawurlencode($group['reportId']),
+        ];
+    }
+    $cachedEvents = $events;
+    return $cachedEvents;
+}
+
+function dashboard_unread_notification_count(?array $events = null): int
+{
+    $events ??= dashboard_report_notifications();
+    $read = $_SESSION['read_notifications'] ?? [];
+    return count(array_filter($events, static fn ($event) => !in_array($event['id'], $read, true)));
+}
+
+function unread_notifications(): bool
+{
+    return dashboard_unread_notification_count() > 0;
 }
 
 function pie_slice_path($cx, $cy, $r, $start, $end)

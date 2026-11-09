@@ -1,0 +1,8 @@
+name = "lifelink-notify"
+main = "src/index.js"
+compatibility_date = "2026-10-26"
+
+# Never put Firebase secrets in this file. Add them in Cloudflare Dashboard:
+# FIREBASE_PROJECT_ID (plain text)
+# FIREBASE_WEB_API_KEY (secret)
+# FIREBASE_SERVICE_ACCOUNT_JSON (secret)

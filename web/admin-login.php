@@ -17,14 +17,23 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
-    if (hash_equals(ADMIN_EMAIL, $email) && hash_equals(ADMIN_PASSWORD, $password)) {
+    try {
+        $account = firebase_sign_in($email, $password);
+        if (!firebase_is_admin_email($email)) {
+            throw new RuntimeException('This Firebase account is not authorized as a dashboard administrator.');
+        }
         session_regenerate_id(true);
         $_SESSION['admin_authenticated'] = true;
-        $_SESSION['admin_name'] = 'Administrator';
+        $_SESSION['admin_name'] = $account['displayName'] ?? $email;
+        $_SESSION['admin_email'] = $email;
+        $_SESSION['firebase_id_token'] = $account['idToken'] ?? '';
         header('Location: index.php');
         exit;
+    } catch (Throwable $exception) {
+        $error = $exception->getMessage() === 'INVALID_LOGIN_CREDENTIALS'
+            ? 'Incorrect email or password.'
+            : $exception->getMessage();
     }
-    $error = 'Incorrect email or password.';
 }
 ?>
 <!DOCTYPE html>

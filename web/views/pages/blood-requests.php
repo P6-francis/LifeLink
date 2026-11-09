@@ -1,9 +1,11 @@
 <?php
 $query = trim($_GET['q'] ?? '');
-$blood = pick($_GET['blood'] ?? 'All', array_merge(['All'], BLOOD_TYPES));
-$status = pick($_GET['status'] ?? 'All', ['All', 'Fulfilled', 'Cancelled']);
 
-$filtered = filter_rows(BLOOD_REQUESTS, $query, ['blood' => $blood, 'status' => $status]);
+$allRequests = lifelink_requests();
+$blood = pick($_GET['blood'] ?? 'All', filter_options($allRequests, 'blood'));
+$status = pick($_GET['status'] ?? 'All', filter_options($allRequests, 'status'));
+$bags = pick($_GET['bags'] ?? 'All', filter_options($allRequests, 'bags'));
+$filtered = filter_rows($allRequests, $query, ['blood' => $blood, 'status' => $status, 'bags' => $bags]);
 $pager = paginate($filtered, $_GET['p'] ?? 1);
 
 $rows = [];
@@ -20,7 +22,7 @@ foreach ($pager['rows'] as $r) {
         e($r['date']),
     ];
 
-    $donation = find_by_id(DONATIONS, $r['donationId']);
+    $donation = $r['donorId'] === '' ? null : ['id' => $r['id'], 'name' => $r['donorName'], 'location' => $r['location'], 'date' => $r['date'], 'blood' => $r['blood'], 'bags' => $r['bags'], 'status' => $r['status'] === 'Completed' ? 'Fulfilled' : $r['status']];
     $popupIds[] = 'popup-' . $r['id'];
     $popups .= partial('record-popup', [
         'id' => 'popup-' . $r['id'],
@@ -41,9 +43,10 @@ foreach ($pager['rows'] as $r) {
 <?= partial('filters', [
     'route' => 'blood-requests',
     'fields' => [
-        ['type' => 'search', 'name' => 'q', 'label' => 'Search', 'hint' => 'Search by request ID or recipient name...', 'value' => $query],
-        ['type' => 'select', 'name' => 'blood', 'label' => 'Blood Type', 'options' => array_merge(['All'], BLOOD_TYPES), 'value' => $blood],
-        ['type' => 'select', 'name' => 'status', 'label' => 'Status', 'options' => ['All', 'Fulfilled', 'Cancelled'], 'value' => $status],
+        ['type' => 'search', 'name' => 'q', 'label' => 'Search', 'hint' => 'Name, ID, blood type/bags, status, location, or date...', 'value' => $query],
+        ['type' => 'select', 'name' => 'blood', 'label' => 'Blood Type', 'options' => filter_options($allRequests, 'blood'), 'value' => $blood],
+        ['type' => 'select', 'name' => 'bags', 'label' => 'Blood Bags', 'options' => filter_options($allRequests, 'bags'), 'value' => $bags],
+        ['type' => 'select', 'name' => 'status', 'label' => 'Status', 'options' => filter_options($allRequests, 'status'), 'value' => $status],
     ],
 ]) ?>
 

@@ -111,7 +111,7 @@
         });
 
         filterForm.addEventListener('change', function (event) {
-            if (event.target.tagName === 'SELECT') {
+            if (event.target.tagName === 'SELECT' || event.target.type === 'date') {
                 loadResults(currentFilterUrl());
             }
         });
@@ -137,7 +137,7 @@
 
     function applyReadState(read, total) {
         document.querySelectorAll('[data-notification]').forEach(function (row) {
-            var isRead = read.indexOf(Number(row.dataset.index)) !== -1;
+            var isRead = read.indexOf(row.dataset.id) !== -1;
             row.classList.toggle('is-read', isRead);
             var button = row.querySelector('[data-toggle-read]');
             if (button) {
@@ -178,7 +178,7 @@
         var toggle = event.target.closest('[data-toggle-read]');
         if (toggle) {
             var row = toggle.closest('[data-notification]');
-            sendNotificationAction({ action: 'toggle', index: row.dataset.index });
+            sendNotificationAction({ action: 'toggle', id: row.dataset.id });
             return;
         }
 

@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'auth_gate.dart';
 import 'connectivity_gate.dart';
+import 'lifelink_theme.dart';
 import '../features/auth/presentation/password_reset_screen.dart';
 
 final appNavigatorKey = GlobalKey<NavigatorState>();
@@ -16,14 +19,61 @@ class LifeLinkApp extends StatefulWidget {
   State<LifeLinkApp> createState() => _LifeLinkAppState();
 }
 
-class _LifeLinkAppState extends State<LifeLinkApp> {
+class _LifeLinkAppState extends State<LifeLinkApp>
+    with WidgetsBindingObserver {
   final _appLinks = AppLinks();
   StreamSubscription<Uri>? _linkSubscription;
+  StreamSubscription<User?>? _authSubscription;
+  Timer? _presenceTimer;
+  String? _presenceUserId;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _listenForPasswordResetLinks();
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (_presenceUserId != null && _presenceUserId != user?.uid) {
+        _setPresence(_presenceUserId!, online: false);
+      }
+      _presenceUserId = user?.uid;
+      _updatePresence();
+      _presenceTimer?.cancel();
+      if (FirebaseAuth.instance.currentUser != null) {
+        _presenceTimer = Timer.periodic(
+          const Duration(seconds: 45),
+          (_) => _updatePresence(),
+        );
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _updatePresence();
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _updatePresence(online: false);
+    }
+  }
+
+  Future<void> _updatePresence({bool online = true}) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    await _setPresence(user.uid, online: online);
+  }
+
+  Future<void> _setPresence(String userId, {required bool online}) async {
+    try {
+      await FirebaseFirestore.instance.collection('presence').doc(userId).set({
+        'online': online,
+        'lastActive': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } on FirebaseException {
+      // Presence is an enhancement and must not block the app.
+    }
   }
 
   Future<void> _listenForPasswordResetLinks() async {
@@ -49,11 +99,13 @@ class _LifeLinkAppState extends State<LifeLinkApp> {
 
   @override
   void dispose() {
+    if (_presenceUserId != null) _setPresence(_presenceUserId!, online: false);
+    WidgetsBinding.instance.removeObserver(this);
     _linkSubscription?.cancel();
+    _authSubscription?.cancel();
+    _presenceTimer?.cancel();
     super.dispose();
   }
-
-  static const red = Color(0xffd9283b);
 
   @override
   Widget build(BuildContext context) {
@@ -61,29 +113,7 @@ class _LifeLinkAppState extends State<LifeLinkApp> {
       navigatorKey: appNavigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'LifeLink',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: red),
-        scaffoldBackgroundColor: const Color(0xfff8f8fa),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          foregroundColor: Color(0xff24242a),
-          elevation: 0,
-          centerTitle: false,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xffe1e1e5)),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xffe1e1e5)),
-          ),
-        ),
-      ),
+      theme: LifeLinkTheme.light,
       home: const ConnectivityGate(child: AuthGate()),
     );
   }

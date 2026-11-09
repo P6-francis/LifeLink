@@ -45,7 +45,7 @@ class _ConnectivityGateState extends State<ConnectivityGate> {
     if (_hasConnection != false) return widget.child;
 
     return Scaffold(
-      backgroundColor: const Color(0xfff7f8fa),
+      backgroundColor: Colors.white,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -55,7 +55,7 @@ class _ConnectivityGateState extends State<ConnectivityGate> {
               Container(
                 width: 78,
                 height: 78,
-                decoration: const BoxDecoration(color: Color(0xffffe8ec), shape: BoxShape.circle),
+                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                 child: const Icon(Icons.wifi_off_rounded, color: Color(0xffcf2929), size: 38),
               ),
               const SizedBox(height: 22),

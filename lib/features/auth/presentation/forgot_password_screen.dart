@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../app/lifelink_theme.dart';
+
 /// Brand colors shared across the forgot-password flow so every step looks
 /// consistent with the rest of the app.
 const _red = Color(0xffcf2929);
@@ -113,7 +115,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: LifeLinkColors.canvas,
         body: SafeArea(
           child: Column(
             children: [
@@ -130,7 +132,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                           width: 76,
                           height: 76,
                           decoration: const BoxDecoration(
-                            color: Color(0xffffe7eb),
+                            color: Colors.white,
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(Icons.lock_reset_rounded, size: 36, color: _red),
@@ -278,7 +280,7 @@ class _PasswordResetSentScreenState extends State<PasswordResetSentScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: LifeLinkColors.canvas,
         body: SafeArea(
           child: Column(
             children: [
@@ -378,7 +380,7 @@ class _ResetTopBar extends StatelessWidget {
             Container(
               width: 38,
               height: 38,
-              decoration: const BoxDecoration(color: Color(0xffffe7eb), shape: BoxShape.circle),
+              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
               child: IconButton(
                 onPressed: onBack,
                 icon: const Icon(Icons.arrow_back, size: 20, color: _red),
@@ -412,4 +414,3 @@ InputDecoration _inputDecoration({required String hint}) => InputDecoration(
         borderSide: BorderSide(color: _red, width: 1.4),
       ),
     );
-

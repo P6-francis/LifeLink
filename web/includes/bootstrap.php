@@ -7,11 +7,13 @@ if (!is_dir($sessionPath)) {
 }
 
 session_save_path($sessionPath);
+session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax', 'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off']);
 session_start();
-//account ni admin
-const ADMIN_EMAIL = 'admin@lifelink.com';
-const ADMIN_PASSWORD = 'admin123';
 
+require __DIR__ . '/firebase.php';
+require __DIR__ . '/live_data.php';
+// Keeps UI option lists (such as blood types) available. Dashboard records are
+// loaded from Firestore by live_data.php, not from the legacy sample arrays.
 require __DIR__ . '/data.php';
 require __DIR__ . '/helpers.php';
 

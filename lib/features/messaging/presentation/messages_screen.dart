@@ -1,43 +1,87 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../../app/lifelink_theme.dart';
 import '../../../widgets/async_state_view.dart';
+import '../../../services/push_notification_service.dart';
+import '../../../widgets/profile_avatar.dart';
 
 class MessagesScreen extends StatelessWidget {
   const MessagesScreen({super.key});
-
-  static const _red = Color(0xffcf2929);
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return const Scaffold(body: Center(child: Text('Please sign in to view messages.')));
+      return const Scaffold(
+        body: Center(child: Text('Please sign in to view messages.')),
+      );
     }
     return Scaffold(
-      backgroundColor: const Color(0xfff7f8fa),
-      appBar: AppBar(backgroundColor: _red, foregroundColor: Colors.white, elevation: 0, title: const Text('Messages', style: TextStyle(fontWeight: FontWeight.w700))),
+      backgroundColor: LifeLinkColors.canvas,
+      appBar: AppBar(
+        title: const Text(
+          'Messages',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('chats').where('participants', arrayContains: user.uid).snapshots(),
+        stream: FirebaseFirestore.instance
+            .collection('chats')
+            .where('participants', arrayContains: user.uid)
+            .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.hasError) return AsyncStateView.error(error: snapshot.error);
-          if (!snapshot.hasData) return const AsyncStateView.loading(label: 'Loading conversations...');
-          final chats = snapshot.data!.docs.toList()..sort((a, b) => _timestamp(b.data()['updatedAt']).compareTo(_timestamp(a.data()['updatedAt'])));
-          if (chats.isEmpty) return const AsyncStateView.empty(title: 'No conversations yet', message: 'Respond to a blood request to start a conversation.', icon: Icons.forum_outlined);
+          if (snapshot.hasError)
+            return AsyncStateView.error(error: snapshot.error);
+          if (!snapshot.hasData)
+            return const AsyncStateView.loading(
+              label: 'Loading conversations...',
+            );
+          final chats = snapshot.data!.docs.toList()
+            ..sort(
+              (a, b) => _timestamp(
+                b.data()['updatedAt'],
+              ).compareTo(_timestamp(a.data()['updatedAt'])),
+            );
+          if (chats.isEmpty)
+            return const AsyncStateView.empty(
+              title: 'No conversations yet',
+              message: 'Respond to a blood request to start a conversation.',
+              icon: Icons.forum_outlined,
+            );
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
             itemCount: chats.length + 1,
-            separatorBuilder: (_, index) => SizedBox(height: index == 0 ? 16 : 10),
+            separatorBuilder: (_, index) =>
+                SizedBox(height: index == 0 ? 16 : 10),
             itemBuilder: (context, index) {
               if (index == 0) {
-                return const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Inbox', style: TextStyle(color: Color(0xff16233b), fontSize: 24, fontWeight: FontWeight.w800)),
-                  SizedBox(height: 4),
-                  Text('Stay connected with donors and requesters.', style: TextStyle(color: Color(0xff71819a), fontSize: 14)),
-                ]);
+                return const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Inbox',
+                      style: TextStyle(
+                        color: Color(0xff16233b),
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Stay connected with donors and requesters.',
+                      style: TextStyle(color: Color(0xff71819a), fontSize: 14),
+                    ),
+                  ],
+                );
               }
-              return _ConversationCard(chat: chats[index - 1], currentUserId: user.uid);
+              return _ConversationCard(
+                chat: chats[index - 1],
+                currentUserId: user.uid,
+              );
             },
           );
         },
@@ -45,7 +89,9 @@ class MessagesScreen extends StatelessWidget {
     );
   }
 
-  static DateTime _timestamp(dynamic value) => value is Timestamp ? value.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
+  static DateTime _timestamp(dynamic value) => value is Timestamp
+      ? value.toDate()
+      : DateTime.fromMillisecondsSinceEpoch(0);
 }
 
 class _ConversationCard extends StatelessWidget {
@@ -56,51 +102,154 @@ class _ConversationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final data = chat.data();
-    final participants = List<String>.from(data['participants'] as List? ?? const []);
-    final otherId = participants.firstWhere((id) => id != currentUserId, orElse: () => currentUserId);
-    final names = Map<String, dynamic>.from(data['participantNames'] as Map? ?? const {});
+    final participants = List<String>.from(
+      data['participants'] as List? ?? const [],
+    );
+    final otherId = participants.firstWhere(
+      (id) => id != currentUserId,
+      orElse: () => currentUserId,
+    );
+    final names = Map<String, dynamic>.from(
+      data['participantNames'] as Map? ?? const {},
+    );
+    final avatarUrls = Map<String, dynamic>.from(
+      data['participantAvatarUrls'] as Map? ?? const {},
+    );
     final name = names[otherId] as String? ?? 'LifeLink user';
+    final avatarUrl = avatarUrls[otherId] as String?;
     final preview = data['lastMessage'] as String? ?? 'Start a conversation.';
     final updatedAt = MessagesScreen._timestamp(data['updatedAt']);
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(19),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatScreen(name: name, recipientId: otherId))),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), boxShadow: const [BoxShadow(color: Color(0x0d172b4d), blurRadius: 10, offset: Offset(0, 3))]),
-          child: Row(children: [
-            Stack(clipBehavior: Clip.none, children: [
-              _Avatar(name: name, radius: 24),
-              Positioned(right: -1, bottom: -1, child: Container(width: 12, height: 12, decoration: BoxDecoration(color: const Color(0xff29b473), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)))),
-            ]),
-            const SizedBox(width: 14),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xff101828), fontSize: 15, fontWeight: FontWeight.w700))), Text(_conversationTime(updatedAt), style: const TextStyle(color: Color(0xff8a99b0), fontSize: 11.5))]),
-              const SizedBox(height: 3),
-              Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xff52627c), fontSize: 13.5)),
-            ])),
-          ]),
-        ),
-      ),
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('presence')
+          .doc(otherId)
+          .snapshots(),
+      builder: (context, presenceSnapshot) {
+        final online = _isOnline(presenceSnapshot.data?.data());
+        return Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(19),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ChatScreen(
+                  name: name,
+                  recipientId: otherId,
+                  recipientAvatarUrl: avatarUrl,
+                ),
+              ),
+            ),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x0d172b4d),
+                    blurRadius: 10,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      _Avatar(
+                        name: name,
+                        imageUrl: avatarUrl,
+                        userId: otherId,
+                        radius: 24,
+                      ),
+                      if (online)
+                        Positioned(
+                          right: -1,
+                          bottom: -1,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: const Color(0xff29b473),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xff101828),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              _conversationTime(updatedAt),
+                              style: const TextStyle(
+                                color: Color(0xff8a99b0),
+                                fontSize: 11.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          preview,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xff52627c),
+                            fontSize: 13.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
   String _conversationTime(DateTime time) {
     if (time.year == 1970) return '';
     final now = DateTime.now();
-    if (time.year == now.year && time.month == now.month && time.day == now.day) return _clock(time);
+    if (time.year == now.year && time.month == now.month && time.day == now.day)
+      return _clock(time);
     return '${time.month}/${time.day}';
   }
 }
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key, required this.name, required this.recipientId});
+  const ChatScreen({
+    super.key,
+    required this.name,
+    required this.recipientId,
+    this.recipientAvatarUrl,
+  });
   final String name;
   final String recipientId;
-  @override State<ChatScreen> createState() => _ChatScreenState();
+  final String? recipientAvatarUrl;
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends State<ChatScreen> {
@@ -122,19 +271,30 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   @override
-  void dispose() { _controller.dispose(); super.dispose(); }
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   Future<void> _loadConversationSettings() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     try {
-      final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      final settings = Map<String, dynamic>.from(profile.data()?['messageSettings'] as Map? ?? const {});
-      final chatSettings = Map<String, dynamic>.from(settings[_chatId] as Map? ?? const {});
-      if (mounted) setState(() {
-        _isMuted = chatSettings['muted'] == true;
-        _isBlocked = chatSettings['blocked'] == true;
-      });
+      final profile = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final settings = Map<String, dynamic>.from(
+        profile.data()?['messageSettings'] as Map? ?? const {},
+      );
+      final chatSettings = Map<String, dynamic>.from(
+        settings[_chatId] as Map? ?? const {},
+      );
+      if (mounted)
+        setState(() {
+          _isMuted = chatSettings['muted'] == true;
+          _isBlocked = chatSettings['blocked'] == true;
+        });
     } on FirebaseException {
       // Messaging itself remains available if personal settings cannot load.
     }
@@ -163,7 +323,13 @@ class _ChatScreenState extends State<ChatScreen> {
         _isMuted = previousMuted;
         _isBlocked = previousBlocked;
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message ?? 'Unable to save conversation settings.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.message ?? 'Unable to save conversation settings.',
+          ),
+        ),
+      );
     }
   }
 
@@ -180,40 +346,206 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Container(
               margin: const EdgeInsets.all(8),
               padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Container(width: 38, height: 4, decoration: BoxDecoration(color: const Color(0xffd9dee7), borderRadius: BorderRadius.circular(4))),
-              const SizedBox(height: 16),
-              ListTile(leading: _Avatar(name: widget.name, radius: 22), title: Text(widget.name, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: const Text('Conversation settings')),
-              SwitchListTile.adaptive(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                secondary: Icon(_isMuted ? Icons.notifications_off_outlined : Icons.notifications_outlined, color: const Color(0xffcf2929)),
-                title: const Text('Mute notifications'),
-                subtitle: Text(_isMuted ? 'You will not be notified about new messages.' : 'Get notified about new messages.'),
-                value: _isMuted,
-                activeColor: const Color(0xffcf2929),
-                onChanged: (value) async { await _saveConversationSettings(muted: value); refreshSheet(() {}); },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xffd9dee7),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ListTile(
+                    leading: _Avatar(
+                      name: widget.name,
+                      imageUrl: widget.recipientAvatarUrl,
+                      userId: widget.recipientId,
+                      radius: 22,
+                    ),
+                    title: Text(
+                      widget.name,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    subtitle: const Text('Conversation settings'),
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    secondary: Icon(
+                      _isMuted
+                          ? Icons.notifications_off_outlined
+                          : Icons.notifications_outlined,
+                      color: const Color(0xffcf2929),
+                    ),
+                    title: const Text('Mute notifications'),
+                    subtitle: Text(
+                      _isMuted
+                          ? 'You will not be notified about new messages.'
+                          : 'Get notified about new messages.',
+                    ),
+                    value: _isMuted,
+                    activeColor: const Color(0xffcf2929),
+                    onChanged: (value) async {
+                      await _saveConversationSettings(muted: value);
+                      refreshSheet(() {});
+                    },
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.flag_outlined,
+                      color: Color(0xffcf2929),
+                    ),
+                    title: const Text('Report user'),
+                    subtitle: const Text(
+                      'Report harmful, suspicious, or inappropriate behavior.',
+                    ),
+                    onTap: () async {
+                      if (sheetContext.mounted) Navigator.pop(sheetContext);
+                      await _reportUser();
+                    },
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: Icon(
+                      _isBlocked
+                          ? Icons.person_add_alt_1_outlined
+                          : Icons.block_outlined,
+                      color: _isBlocked
+                          ? const Color(0xff249b60)
+                          : const Color(0xffcf2929),
+                    ),
+                    title: Text(
+                      _isBlocked ? 'Unblock contact' : 'Block contact',
+                    ),
+                    subtitle: Text(
+                      _isBlocked
+                          ? 'You can send messages to this contact again.'
+                          : 'Hide the composer and stop sending messages in this chat.',
+                    ),
+                    onTap: () async {
+                      if (!_isBlocked) {
+                        final confirmed = await _confirmBlock();
+                        if (confirmed != true) return;
+                      }
+                      await _saveConversationSettings(blocked: !_isBlocked);
+                      if (sheetContext.mounted) Navigator.pop(sheetContext);
+                    },
+                  ),
+                ],
               ),
-              const Divider(),
-              ListTile(
-                leading: Icon(_isBlocked ? Icons.person_add_alt_1_outlined : Icons.block_outlined, color: _isBlocked ? const Color(0xff249b60) : const Color(0xffcf2929)),
-                title: Text(_isBlocked ? 'Unblock contact' : 'Block contact'),
-                subtitle: Text(_isBlocked ? 'You can send messages to this contact again.' : 'Hide the composer and stop sending messages in this chat.'),
-                onTap: () async {
-                  if (!_isBlocked) {
-                    final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(title: Text('Block ${widget.name}?'), content: const Text('You will no longer be able to send messages in this conversation.'), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), style: FilledButton.styleFrom(backgroundColor: const Color(0xffcf2929)), child: const Text('Block'))]));
-                    if (confirmed != true) return;
-                  }
-                  await _saveConversationSettings(blocked: !_isBlocked);
-                  if (sheetContext.mounted) Navigator.pop(sheetContext);
-                },
-              ),
-              ]),
             ),
           ),
         ),
       ),
     );
   }
+
+  Future<void> _reportUser() async {
+    final submission = await showDialog<_UserReport>(
+      context: context,
+      builder: (_) => _ReportUserDialog(name: widget.name),
+    );
+    if (submission == null) return;
+
+    final reporter = FirebaseAuth.instance.currentUser;
+    if (reporter == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('userReports').add({
+        'reporterId': reporter.uid,
+        'reportedUserId': widget.recipientId,
+        'reportedUserName': widget.name,
+        'chatId': _chatId,
+        'reason': submission.reason,
+        'details': submission.details,
+        'status': 'Pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Report submitted. Thank you for helping keep LifeLink safe.',
+            ),
+          ),
+        );
+    } on FirebaseException catch (error) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.message ?? 'Unable to submit the report.'),
+          ),
+        );
+    }
+  }
+
+  Future<bool?> _confirmBlock() => showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const CircleAvatar(
+              radius: 21,
+              backgroundColor: Colors.white,
+              child: Icon(Icons.block_outlined, color: Color(0xffcf2929)),
+            ),
+            const SizedBox(height: 15),
+            Text(
+              'Block ${widget.name}?',
+              style: const TextStyle(
+                color: Color(0xff13223c),
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'You will no longer be able to send messages in this conversation. You can unblock this contact later in conversation settings.',
+              style: TextStyle(color: Color(0xff62738d), height: 1.4),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xffcf2929),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 17,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.block, size: 17),
+                  label: const Text('Block user'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 
   Future<void> _send() async {
     final text = _controller.text.trim();
@@ -223,14 +555,25 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       await user.reload();
       if (FirebaseAuth.instance.currentUser?.emailVerified != true) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Verify your email before sending messages.')));
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Verify your email before sending messages.'),
+            ),
+          );
         return;
       }
       final chat = FirebaseFirestore.instance.collection('chats').doc(_chatId);
-      final myName = user.displayName?.trim().isNotEmpty == true ? user.displayName!.trim() : 'LifeLink user';
+      final myName = user.displayName?.trim().isNotEmpty == true
+          ? user.displayName!.trim()
+          : 'LifeLink user';
       await chat.set({
         'participants': [user.uid, widget.recipientId]..sort(),
         'participantNames': {user.uid: myName, widget.recipientId: widget.name},
+        'participantAvatarUrls': {
+          user.uid: user.photoURL ?? '',
+          widget.recipientId: widget.recipientAvatarUrl ?? '',
+        },
         'lastMessage': text,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -240,8 +583,18 @@ class _ChatScreenState extends State<ChatScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       });
       _controller.clear();
+      unawaited(
+        PushNotificationService.instance.sendChatNotification(
+          chatId: _chatId,
+          recipientId: widget.recipientId,
+          message: text,
+        ),
+      );
     } on FirebaseException catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message ?? 'Unable to send message.')));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message ?? 'Unable to send message.')),
+        );
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -249,74 +602,319 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xfff7f8fa),
-    appBar: AppBar(backgroundColor: const Color(0xffcf2929), foregroundColor: Colors.white, elevation: 0, titleSpacing: 0, title: Row(children: [
-      CircleAvatar(radius: 17, backgroundColor: Colors.white, child: Text(widget.name.trim().isEmpty ? '?' : widget.name.trim()[0].toUpperCase(), style: const TextStyle(color: Color(0xffcf2929), fontWeight: FontWeight.w800))),
-      const SizedBox(width: 10),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(widget.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)), const Text('LifeLink member', style: TextStyle(fontSize: 11.5, color: Color(0xffffdfe2)))])),
-    ]), actions: [IconButton(tooltip: 'Conversation settings', icon: const Icon(Icons.more_vert), onPressed: _showConversationSettings)]),
-    body: Column(children: [
-      Expanded(child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('chats').doc(_chatId).collection('messages').orderBy('createdAt').snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) return AsyncStateView.error(error: snapshot.error);
-          if (!snapshot.hasData) return const AsyncStateView.loading(label: 'Loading messages...');
-          final messages = snapshot.data!.docs;
-          if (messages.isEmpty) return AsyncStateView.empty(title: 'Start the conversation', message: 'Send a message to connect with ${widget.name}.', icon: Icons.chat_bubble_outline);
-          return ListView.builder(padding: const EdgeInsets.fromLTRB(16, 18, 16, 12), itemCount: messages.length + 1, itemBuilder: (_, index) {
-            if (index == 0) return const Center(child: Padding(padding: EdgeInsets.only(bottom: 18), child: DecoratedBox(decoration: BoxDecoration(color: Color(0xffe9edf3), borderRadius: BorderRadius.all(Radius.circular(20))), child: Padding(padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: Text('Messages are private and secure', style: TextStyle(color: Color(0xff71819a), fontSize: 11))))));
-            index -= 1;
-            final message = messages[index].data();
-            final mine = message['senderId'] == FirebaseAuth.instance.currentUser?.uid;
-            final createdAt = message['createdAt'] is Timestamp ? (message['createdAt'] as Timestamp).toDate() : null;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.end,
+    backgroundColor: Colors.white,
+    appBar: AppBar(
+      backgroundColor: const Color(0xffcf2929),
+      foregroundColor: Colors.white,
+      elevation: 0,
+      titleSpacing: 0,
+      title: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('presence')
+            .doc(widget.recipientId)
+            .snapshots(),
+        builder: (context, presenceSnapshot) {
+          final online = _isOnline(presenceSnapshot.data?.data());
+          return Row(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  if (!mine) ...[
-                    _Avatar(name: widget.name, radius: 16),
-                    const SizedBox(width: 8),
-                  ],
-                  Flexible(
-                    child: Column(
-                      crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                      children: [
-                        if (!mine) ...[
-                          Text(widget.name, style: const TextStyle(color: Color(0xff71819a), fontSize: 11, fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 3),
-                        ],
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: mine ? const Color(0xffd9283b) : Colors.white,
-                            borderRadius: BorderRadius.only(topLeft: const Radius.circular(18), topRight: const Radius.circular(18), bottomLeft: Radius.circular(mine ? 18 : 5), bottomRight: Radius.circular(mine ? 5 : 18)),
-                            boxShadow: mine ? null : const [BoxShadow(color: Color(0x120d1c33), blurRadius: 5, offset: Offset(0, 2))],
-                          ),
-                          child: Text(message['text'] as String? ?? '', style: TextStyle(color: mine ? Colors.white : const Color(0xff263651), height: 1.35)),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(createdAt == null ? 'Sending...' : _clock(createdAt), style: const TextStyle(color: Color(0xff8a99b0), fontSize: 10.5)),
-                      ],
-                    ),
+                  ProfileAvatar(
+                    name: widget.name,
+                    imageUrl: widget.recipientAvatarUrl,
+                    userId: widget.recipientId,
+                    radius: 17,
                   ),
+                  if (online)
+                    Positioned(
+                      right: -1,
+                      bottom: -1,
+                      child: Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(
+                          color: const Color(0xff29b473),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xffcf2929),
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
-            );
-          });
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      online ? 'Online' : 'LifeLink member',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
         },
-      )),
-      SafeArea(
-        child: _isBlocked
-            ? Container(width: double.infinity, color: const Color(0xfffff0f1), padding: const EdgeInsets.all(16), child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.block_outlined, color: Color(0xffcf2929), size: 18), SizedBox(width: 8), Text('You blocked this contact.', style: TextStyle(color: Color(0xffa22330), fontWeight: FontWeight.w600))]))
-            : Container(color: Colors.white, padding: const EdgeInsets.fromLTRB(14, 10, 14, 10), child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Expanded(child: Container(decoration: BoxDecoration(color: const Color(0xfff1f3f6), borderRadius: BorderRadius.circular(24)), child: TextField(controller: _controller, minLines: 1, maxLines: 4, textCapitalization: TextCapitalization.sentences, textInputAction: TextInputAction.newline, onSubmitted: (_) => _send(), decoration: const InputDecoration(hintText: 'Write a message', hintStyle: TextStyle(color: Color(0xff8a99b0)), border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 11))))),
-                const SizedBox(width: 8),
-                Material(color: const Color(0xffcf2929), shape: const CircleBorder(), child: IconButton(tooltip: 'Send message', icon: _sending ? const SizedBox(width: 19, height: 19, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.arrow_upward_rounded, color: Colors.white), onPressed: _sending ? null : _send)),
-              ])),
       ),
-    ]),
+      actions: [
+        IconButton(
+          tooltip: 'Conversation settings',
+          icon: const Icon(Icons.more_vert),
+          onPressed: _showConversationSettings,
+        ),
+      ],
+    ),
+    body: Column(
+      children: [
+        Expanded(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('chats')
+                .doc(_chatId)
+                .collection('messages')
+                .orderBy('createdAt')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError)
+                return AsyncStateView.error(error: snapshot.error);
+              if (!snapshot.hasData)
+                return const AsyncStateView.loading(
+                  label: 'Loading messages...',
+                );
+              final messages = snapshot.data!.docs;
+              if (messages.isEmpty)
+                return AsyncStateView.empty(
+                  title: 'Start the conversation',
+                  message: 'Send a message to connect with ${widget.name}.',
+                  icon: Icons.chat_bubble_outline,
+                );
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+                itemCount: messages.length + 1,
+                itemBuilder: (_, index) {
+                  if (index == 0)
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: 18),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Color(0xffe9edf3),
+                            borderRadius: BorderRadius.all(Radius.circular(20)),
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            child: Text(
+                              'Messages are private and secure',
+                              style: TextStyle(
+                                color: Color(0xff71819a),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  index -= 1;
+                  final message = messages[index].data();
+                  final mine =
+                      message['senderId'] ==
+                      FirebaseAuth.instance.currentUser?.uid;
+                  final createdAt = message['createdAt'] is Timestamp
+                      ? (message['createdAt'] as Timestamp).toDate()
+                      : null;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      mainAxisAlignment: mine
+                          ? MainAxisAlignment.end
+                          : MainAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        if (!mine) ...[
+                          _Avatar(
+                            name: widget.name,
+                            imageUrl: widget.recipientAvatarUrl,
+                            userId: widget.recipientId,
+                            radius: 16,
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: mine
+                                ? CrossAxisAlignment.end
+                                : CrossAxisAlignment.start,
+                            children: [
+                              if (!mine) ...[
+                                Text(
+                                  widget.name,
+                                  style: const TextStyle(
+                                    color: Color(0xff71819a),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                              ],
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: mine
+                                      ? const Color(0xffd9283b)
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: const Radius.circular(18),
+                                    topRight: const Radius.circular(18),
+                                    bottomLeft: Radius.circular(mine ? 18 : 5),
+                                    bottomRight: Radius.circular(mine ? 5 : 18),
+                                  ),
+                                  boxShadow: mine
+                                      ? null
+                                      : const [
+                                          BoxShadow(
+                                            color: Color(0x120d1c33),
+                                            blurRadius: 5,
+                                            offset: Offset(0, 2),
+                                          ),
+                                        ],
+                                ),
+                                child: Text(
+                                  message['text'] as String? ?? '',
+                                  style: TextStyle(
+                                    color: mine
+                                        ? Colors.white
+                                        : const Color(0xff263651),
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                createdAt == null
+                                    ? 'Sending...'
+                                    : _clock(createdAt),
+                                style: const TextStyle(
+                                  color: Color(0xff8a99b0),
+                                  fontSize: 10.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        SafeArea(
+          child: _isBlocked
+              ? Container(
+                  width: double.infinity,
+                  color: Colors.white,
+                  padding: const EdgeInsets.all(16),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.block_outlined,
+                        color: Color(0xffcf2929),
+                        size: 18,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'You blocked this contact.',
+                        style: TextStyle(
+                          color: Color(0xffa22330),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xfff1f3f6),
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: TextField(
+                            controller: _controller,
+                            minLines: 1,
+                            maxLines: 4,
+                            textCapitalization: TextCapitalization.sentences,
+                            textInputAction: TextInputAction.newline,
+                            onSubmitted: (_) => _send(),
+                            decoration: const InputDecoration(
+                              hintText: 'Write a message',
+                              hintStyle: TextStyle(color: Color(0xff8a99b0)),
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 11,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Material(
+                        color: const Color(0xffcf2929),
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          tooltip: 'Send message',
+                          icon: _sending
+                              ? const SizedBox(
+                                  width: 19,
+                                  height: 19,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.arrow_upward_rounded,
+                                  color: Colors.white,
+                                ),
+                          onPressed: _sending ? null : _send,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+      ],
+    ),
   );
 }
 
@@ -326,18 +924,190 @@ String _clock(DateTime time) {
   return '$hour:$minute ${time.hour >= 12 ? 'PM' : 'AM'}';
 }
 
+bool _isOnline(Map<String, dynamic>? presence) {
+  if (presence?['online'] != true) return false;
+  final lastActive = presence?['lastActive'];
+  if (lastActive is! Timestamp) return false;
+  return DateTime.now().difference(lastActive.toDate()) <
+      const Duration(minutes: 2);
+}
+
 class _Avatar extends StatelessWidget {
-  const _Avatar({required this.name, this.radius = 22});
+  const _Avatar({
+    required this.name,
+    this.imageUrl,
+    this.userId,
+    this.radius = 22,
+  });
   final String name;
+  final String? imageUrl;
+  final String? userId;
   final double radius;
 
   @override
-  Widget build(BuildContext context) => CircleAvatar(
+  Widget build(BuildContext context) => ProfileAvatar(
+    name: name,
+    imageUrl: imageUrl,
+    userId: userId,
     radius: radius,
     backgroundColor: const Color(0xffcf2929),
-    child: Text(
-      name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
-      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: radius * .77),
+    initialColor: Colors.white,
+  );
+}
+
+InputDecoration _reportFieldDecoration({String? hint}) => InputDecoration(
+  hintText: hint,
+  hintStyle: const TextStyle(color: Color(0xff8a99b0)),
+  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+  filled: true,
+  fillColor: const Color(0xfff7f8fa),
+  enabledBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(13),
+    borderSide: const BorderSide(color: Color(0xffe1e6ed)),
+  ),
+  focusedBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(13),
+    borderSide: const BorderSide(color: Color(0xffcf2929), width: 1.4),
+  ),
+);
+
+class _ReportUserDialog extends StatefulWidget {
+  const _ReportUserDialog({required this.name});
+
+  final String name;
+
+  @override
+  State<_ReportUserDialog> createState() => _ReportUserDialogState();
+}
+
+class _ReportUserDialogState extends State<_ReportUserDialog> {
+  static const _reasons = [
+    'Harassment or abusive language',
+    'Spam or scam',
+    'False or misleading information',
+    'Inappropriate content',
+    'Other',
+  ];
+
+  final _details = TextEditingController();
+  String _selectedReason = _reasons.first;
+
+  @override
+  void dispose() {
+    _details.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+    backgroundColor: Colors.transparent,
+    insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+    child: Container(
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: Colors.white,
+                child: Icon(Icons.flag_outlined, color: Color(0xffcf2929)),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Report user',
+                  style: TextStyle(
+                    color: Color(0xff13223c),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Report ${widget.name} for behavior that makes LifeLink unsafe. Our team will review this privately.',
+            style: const TextStyle(color: Color(0xff62738d), height: 1.4),
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'What happened?',
+            style: TextStyle(
+              color: Color(0xff263651),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 7),
+          DropdownButtonFormField<String>(
+            value: _selectedReason,
+            isExpanded: true,
+            decoration: _reportFieldDecoration(),
+            items: _reasons
+                .map(
+                  (reason) => DropdownMenuItem(
+                    value: reason,
+                    child: Text(reason, overflow: TextOverflow.ellipsis),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) =>
+                setState(() => _selectedReason = value ?? _selectedReason),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _details,
+            minLines: 2,
+            maxLines: 4,
+            maxLength: 500,
+            decoration: _reportFieldDecoration(hint: 'Add details (optional)'),
+          ),
+          const SizedBox(height: 3),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: () => Navigator.of(context).pop(
+                  _UserReport(
+                    reason: _selectedReason,
+                    details: _details.text.trim(),
+                  ),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xffcf2929),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.flag, size: 17),
+                label: const Text('Submit report'),
+              ),
+            ],
+          ),
+        ],
+      ),
     ),
   );
+}
+
+class _UserReport {
+  const _UserReport({required this.reason, required this.details});
+  final String reason;
+  final String details;
 }

@@ -23,6 +23,7 @@ $items = [
             <a class="nav-link<?= $key === $current ? ' active' : '' ?>" href="index.php?page=<?= e($key) ?>">
                 <?= icon($iconName, 15) ?>
                 <span><?= e($label) ?></span>
+                <?php if ($key === 'notifications' && ($count = dashboard_unread_notification_count()) > 0): ?><span class="nav-count"><?= $count > 99 ? '99+' : $count ?></span><?php endif; ?>
             </a>
         <?php endforeach; ?>
     </nav>
